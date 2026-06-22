@@ -1,0 +1,1 @@
+/var/mnt/Datos/Desarrollo/Workspace/VSCode/taurfit/syn-test/target/debug/syn-test: /var/mnt/Datos/Desarrollo/Workspace/VSCode/taurfit/syn-test/src/commands.rs /var/mnt/Datos/Desarrollo/Workspace/VSCode/taurfit/syn-test/src/commons.rs /var/mnt/Datos/Desarrollo/Workspace/VSCode/taurfit/syn-test/src/main.rs /var/mnt/Datos/Desarrollo/Workspace/VSCode/taurfit/syn-test/src/structs.rs

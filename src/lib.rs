@@ -1,0 +1,133 @@
+pub mod commands;
+pub mod commons;
+pub mod structs;
+
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
+};
+
+use crate::{commands::CommandDefinition, structs::StructDefinition};
+
+fn find_rs_files<T>(path: T, out: &mut Vec<PathBuf>) -> Result<(), std::io::Error>
+where
+    T: AsRef<Path>,
+{
+    for entry in fs::read_dir(path.as_ref())? {
+        if let Ok(entry) = entry {
+            let entry = entry.path();
+            if entry.is_file() {
+                if entry.extension().unwrap() == "rs" {
+                    out.push(entry);
+                }
+            } else if entry.is_dir() {
+                find_rs_files(entry, out)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn build() {
+    let src_tauri_path_buf = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+        .as_path()
+        .join("src-tauri");
+    let src_tauri_path = src_tauri_path_buf.as_path();
+    let project_dir = src_tauri_path.parent().unwrap();
+    let backend_dir = project_dir.join("src").join("utils").join("backend");
+    let models_path = backend_dir.join("models.rs").display().to_string();
+    let client_path = backend_dir.join("client.rs").display().to_string();
+
+    if !fs::exists(&backend_dir).unwrap() {
+        fs::create_dir_all(&backend_dir).unwrap();
+    }
+
+    println!("Gathering Rust source codes...");
+    let mut files = Vec::new();
+    find_rs_files(src_tauri_path, &mut files).unwrap();
+
+    println!("Looking for commands...");
+    let mut commands = Vec::new();
+    for file in files {
+        for cmd in CommandDefinition::find(file, src_tauri_path) {
+            commands.push(cmd);
+        }
+    }
+    println!("  Found {} commands", commands.len());
+
+    println!("Looking for structs...");
+    let mut files_for_structs: HashMap<String, Vec<String>> = HashMap::new();
+    for cmd in &commands {
+        for pat in cmd.get_inner_leafs() {
+            let struct_name = pat.split("::").last().unwrap_or(&pat);
+
+            if let Some(path) = pat.strip_prefix("crate::") {
+                let path = PathBuf::from(src_tauri_path)
+                    .join(path.replace("::", "/"))
+                    .parent()
+                    .unwrap()
+                    .to_path_buf();
+                let mut path_str = format!("{}.rs", path.display());
+                if !fs::exists(&path_str).unwrap() {
+                    path_str = format!("{}/mod.rs", path.display());
+                }
+
+                let entry = files_for_structs.entry(path_str).or_default();
+                entry.push(struct_name.to_string());
+            }
+        }
+    }
+
+    let mut structs = Vec::new();
+    let mut already_added = HashSet::new();
+    loop {
+        let mut new_structs = Vec::new();
+        for (file, structs_to_find) in &files_for_structs {
+            for (name, def) in StructDefinition::find(file, src_tauri_path) {
+                if structs_to_find.contains(&name) && already_added.insert(def.name.clone()) {
+                    new_structs.push(def);
+                }
+            }
+        }
+
+        files_for_structs.clear();
+        for struct_d in &new_structs {
+            for pat in struct_d.get_inner_leafs() {
+                let struct_name = pat.split("::").last().unwrap_or(&pat);
+
+                if let Some(path) = pat.strip_prefix("crate::") {
+                    let path = PathBuf::from(src_tauri_path)
+                        .join(path.replace("::", "/"))
+                        .parent()
+                        .unwrap()
+                        .to_path_buf();
+                    let mut path_str = format!("{}.rs", path.display());
+                    if !fs::exists(&path_str).unwrap() {
+                        path_str = format!("{}/mod.rs", path.display());
+                    }
+
+                    let entry = files_for_structs.entry(path_str).or_default();
+                    entry.push(struct_name.to_string());
+                }
+            }
+        }
+
+        for ns in new_structs {
+            structs.push(ns);
+        }
+        if files_for_structs.is_empty() {
+            break;
+        }
+    }
+    println!("  Found {} structs", structs.len());
+
+    println!("Generating models file in '{}'", models_path);
+    structs.sort_by_key(|e| e.name.clone());
+    StructDefinition::generate_file(models_path, structs);
+
+    println!("Generating client file in '{}'", client_path);
+    commands.sort_by_key(|e| e.name.clone());
+    CommandDefinition::generate_file(client_path, commands);
+}

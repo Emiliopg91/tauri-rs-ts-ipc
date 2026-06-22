@@ -1,0 +1,13 @@
+[package]
+name = "tauri-rs-ts-ipc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quote = "1"
+proc-macro2 = { version = "1", features = ["span-locations"] }
+syn = { version = "2", features = ["full", "extra-traits"] }
+
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
