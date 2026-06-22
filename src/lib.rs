@@ -14,16 +14,14 @@ fn find_rs_files<T>(path: T, out: &mut Vec<PathBuf>) -> Result<(), std::io::Erro
 where
     T: AsRef<Path>,
 {
-    for entry in fs::read_dir(path.as_ref())? {
-        if let Ok(entry) = entry {
-            let entry = entry.path();
-            if entry.is_file() {
-                if entry.extension().unwrap() == "rs" {
-                    out.push(entry);
-                }
-            } else if entry.is_dir() {
-                find_rs_files(entry, out)?;
+    for entry in fs::read_dir(path.as_ref())?.flatten() {
+        let entry = entry.path();
+        if entry.is_file() {
+            if entry.extension().unwrap() == "rs" {
+                out.push(entry);
             }
+        } else if entry.is_dir() {
+            find_rs_files(entry, out)?;
         }
     }
 

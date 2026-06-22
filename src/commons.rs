@@ -34,9 +34,9 @@ pub enum TypeRepr {
 impl TypeRepr {
     pub fn from_syn_type(crate_name: &str, ty: &syn::Type) -> TypeRepr {
         match ty {
-            syn::Type::Reference(r) => TypeRepr::from_syn_type(&crate_name, &r.elem),
-            syn::Type::Paren(p) => TypeRepr::from_syn_type(&crate_name, &p.elem),
-            syn::Type::Group(g) => TypeRepr::from_syn_type(&crate_name, &g.elem),
+            syn::Type::Reference(r) => TypeRepr::from_syn_type(crate_name, &r.elem),
+            syn::Type::Paren(p) => TypeRepr::from_syn_type(crate_name, &p.elem),
+            syn::Type::Group(g) => TypeRepr::from_syn_type(crate_name, &g.elem),
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 TypeRepr::Simple(crate_name.to_string(), "()".to_string())
             }
@@ -55,7 +55,7 @@ impl TypeRepr {
                             .iter()
                             .filter_map(|arg| match arg {
                                 syn::GenericArgument::Type(t) => {
-                                    Some(TypeRepr::from_syn_type(&crate_name, t))
+                                    Some(TypeRepr::from_syn_type(crate_name, t))
                                 }
                                 _ => None, // ignora lifetimes, const generics, etc.
                             })

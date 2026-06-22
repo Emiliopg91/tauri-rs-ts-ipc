@@ -30,24 +30,22 @@ impl CommandDefinition {
         let mut res = Vec::new();
 
         for item in items {
-            if let syn::Item::Fn(fn_def) = item {
-                if Self::has_tauri_command_attr(&fn_def.attrs) {
+            if let syn::Item::Fn(fn_def) = item
+                && Self::has_tauri_command_attr(&fn_def.attrs) {
                     let name = fn_def.sig.ident.to_string();
 
                     let mut param_names = Vec::new();
                     let mut params = HashMap::new();
                     for input in &fn_def.sig.inputs {
-                        if let syn::FnArg::Typed(pat_type) = input {
-                            if let syn::Pat::Ident(id) = pat_type.pat.as_ref() {
-                                if !Self::is_type_excluded(&pat_type.ty) {
+                        if let syn::FnArg::Typed(pat_type) = input
+                            && let syn::Pat::Ident(id) = pat_type.pat.as_ref()
+                                && !Self::is_type_excluded(&pat_type.ty) {
                                     let name = id.ident.to_string();
                                     param_names.push(name.clone());
                                     params
                                         .entry(name)
                                         .or_insert(TypeRepr::from_syn_type("", &pat_type.ty));
                                 }
-                            }
-                        }
                     }
 
                     let mut ret_type = None;
@@ -72,7 +70,6 @@ impl CommandDefinition {
                         location,
                     });
                 }
-            }
         }
 
         res
@@ -183,11 +180,10 @@ impl CommandDefinition {
         let mut struct_names = HashSet::new();
         for cmd in &commands {
             for ty in cmd.get_inner_leafs() {
-                if let Some(name) = ty.split("::").last() {
-                    if standard_type_assoc(name).is_none() {
+                if let Some(name) = ty.split("::").last()
+                    && standard_type_assoc(name).is_none() {
                         struct_names.insert(name.to_string());
                     }
-                }
             }
         }
         let struct_names = struct_names.iter().cloned().collect::<Vec<_>>().join(", ");
@@ -212,7 +208,7 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
 		return invoke(method, payload);
 	}\n",
         );
-        content.push_str("}");
+        content.push('}');
 
         fs::write(&file, content).unwrap();
     }
