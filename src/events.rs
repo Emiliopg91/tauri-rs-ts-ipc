@@ -225,13 +225,13 @@ impl EventDefinition {
     fn to_typescript(&self) -> String {
         let mut res = String::new();
         res.push_str(&format!(
-            "public static on{}(callback: (payload: {}) => void) {{\n",
+            "public static on{}(callback: (payload: {}) => void): () => void {{\n",
             self.name_to_pascalcase(),
             self.ty.to_typescript()
         ));
 
         res.push_str(&format!(
-            "  BackendListener.inner_listen<{}>(\"{}\", callback);\n",
+            "  return BackendListener.inner_listen<{}>(\"{}\", callback);\n",
             self.ty.to_typescript(),
             self.name
         ));
