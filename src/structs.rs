@@ -56,10 +56,11 @@ impl StructDefinition {
                     struct_def.struct_token.span().start().line
                 );
                 for field in &struct_def.fields {
-                    let type_rep = TypeRepr::from_syn_type(&crate_name, &field.ty);
-                    fields
-                        .entry(field.ident.as_ref().unwrap().to_string())
-                        .or_insert(type_rep);
+                    if let Some(type_rep) = TypeRepr::from_syn_type(&crate_name, &field.ty) {
+                        fields
+                            .entry(field.ident.as_ref().unwrap().to_string())
+                            .or_insert(type_rep);
+                    }
                 }
                 res.entry(name.clone()).or_insert(Self {
                     name,

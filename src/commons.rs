@@ -27,18 +27,18 @@ pub enum TypeRepr {
     Simple(String, String),
     Generic {
         wrapper: GenericWrapper,
-        types: Vec<TypeRepr>,
+        types: Vec<Option<TypeRepr>>,
     },
 }
 
 impl TypeRepr {
-    pub fn from_syn_type(crate_name: &str, ty: &syn::Type) -> TypeRepr {
+    pub fn from_syn_type(crate_name: &str, ty: &syn::Type) -> Option<TypeRepr> {
         match ty {
             syn::Type::Reference(r) => TypeRepr::from_syn_type(crate_name, &r.elem),
             syn::Type::Paren(p) => TypeRepr::from_syn_type(crate_name, &p.elem),
             syn::Type::Group(g) => TypeRepr::from_syn_type(crate_name, &g.elem),
             syn::Type::Tuple(t) if t.elems.is_empty() => {
-                TypeRepr::Simple(crate_name.to_string(), "()".to_string())
+                Some(TypeRepr::Simple(crate_name.to_string(), "()".to_string()))
             }
             syn::Type::Path(type_path) => {
                 let segment = type_path
@@ -50,7 +50,7 @@ impl TypeRepr {
 
                 match &segment.arguments {
                     syn::PathArguments::AngleBracketed(angle) => {
-                        let inner_types: Vec<TypeRepr> = angle
+                        let inner_types: Vec<Option<TypeRepr>> = angle
                             .args
                             .iter()
                             .filter_map(|arg| match arg {
@@ -75,20 +75,22 @@ impl TypeRepr {
                         };
 
                         match wrapper {
-                            Some(w) if !inner_types.is_empty() => TypeRepr::Generic {
+                            Some(w) if !inner_types.is_empty() => Some(TypeRepr::Generic {
                                 wrapper: w,
                                 types: inner_types,
-                            },
+                            }),
                             _ => {
-                                panic!("generic type `{ident}` not supported");
+                                eprintln!("generic type `{ident}` not supported");
+                                None
                             }
                         }
                     }
-                    _ => TypeRepr::Simple(crate_name.to_string(), ident),
+                    _ => Some(TypeRepr::Simple(crate_name.to_string(), ident)),
                 }
             }
             other => {
-                panic!("type `{:?}` not supported", other);
+                eprintln!("type `{:?}` not supported", other);
+                None
             }
         }
     }
@@ -99,6 +101,10 @@ impl TypeRepr {
                 .map(|ts| ts.to_string())
                 .unwrap_or_else(|| s.clone()),
             TypeRepr::Generic { wrapper, types } => {
+                let types = types
+                    .into_iter()
+                    .filter_map(|x| x.clone())
+                    .collect::<Vec<TypeRepr>>();
                 let first = types[0].to_typescript();
                 match wrapper {
                     GenericWrapper::Vec => format!("{first}[]"),
@@ -117,6 +123,10 @@ impl TypeRepr {
         match self {
             TypeRepr::Simple(_, s) => vec![s.clone()],
             TypeRepr::Generic { types, .. } => {
+                let types = types
+                    .into_iter()
+                    .filter_map(|x| x.clone())
+                    .collect::<Vec<TypeRepr>>();
                 types.iter().flat_map(|t| t.inner_leaf_types()).collect()
             }
         }
