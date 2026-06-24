@@ -4,7 +4,7 @@ pub mod events;
 pub mod structs;
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -54,7 +54,7 @@ pub fn build() {
 }
 
 pub fn inner_build(
-    project_dir: &PathBuf,
+    project_dir: &Path,
     backend_dir: &PathBuf,
     src_tauri_path: &PathBuf,
     models_path: &PathBuf,
@@ -63,7 +63,7 @@ pub fn inner_build(
 ) {
     println!("cargo:warning=Gathering Rust source codes...");
     let mut files = Vec::new();
-    find_rs_files(&src_tauri_path, &mut files).unwrap();
+    find_rs_files(src_tauri_path, &mut files).unwrap();
 
     let mut commands = Vec::new();
     let mut events = Vec::new();
@@ -118,7 +118,7 @@ pub fn inner_build(
                     return Some(struct_d.clone());
                 }
             }
-            return None;
+            None
         })
         .collect::<Vec<StructDefinition>>();
 
@@ -126,17 +126,16 @@ pub fn inner_build(
     println!("cargo:warning=  Found {} events", events.len());
     println!("cargo:warning=  Found {} structs", used_structs.len());
 
-    if !fs::exists(&backend_dir).unwrap() {
-        fs::create_dir_all(&backend_dir).unwrap();
+    if !fs::exists(backend_dir).unwrap() {
+        fs::create_dir_all(backend_dir).unwrap();
     }
 
     println!(
         "cargo:warning=Generating models file in '{}'",
-        models_path
+        &models_path
             .display()
             .to_string()
             .replace(&project_dir.display().to_string(), "")[1..]
-            .to_string()
     );
     used_structs.sort_by_key(|e| e.name.clone());
     StructDefinition::generate_file(models_path, used_structs);
@@ -144,11 +143,10 @@ pub fn inner_build(
 
     println!(
         "cargo:warning=Generating client file in '{}'",
-        client_path
+        &client_path
             .display()
             .to_string()
             .replace(&project_dir.display().to_string(), "")[1..]
-            .to_string()
     );
     commands.sort_by_key(|e| e.name.clone());
     CommandDefinition::generate_file(client_path, commands);
@@ -156,11 +154,10 @@ pub fn inner_build(
 
     println!(
         "cargo:warning=Generating listener file in '{}'",
-        listener_path
+        &listener_path
             .display()
             .to_string()
             .replace(&project_dir.display().to_string(), "")[1..]
-            .to_string()
     );
     events.sort_by_key(|e| e.name.clone());
     EventDefinition::generate_file(listener_path, events);

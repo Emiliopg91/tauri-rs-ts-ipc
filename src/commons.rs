@@ -113,7 +113,7 @@ impl TypeRepr {
                 .unwrap_or_else(|| s.clone()),
             TypeRepr::Generic { wrapper, types } => {
                 let types = types
-                    .into_iter()
+                    .iter()
                     .filter_map(|x| x.clone())
                     .collect::<Vec<TypeRepr>>();
                 let first = types[0].to_typescript();
@@ -135,7 +135,7 @@ impl TypeRepr {
             TypeRepr::Simple(_, s) => vec![s.clone()],
             TypeRepr::Generic { types, .. } => {
                 let types = types
-                    .into_iter()
+                    .iter()
                     .filter_map(|x| x.clone())
                     .collect::<Vec<TypeRepr>>();
                 types.iter().flat_map(|t| t.inner_leaf_types()).collect()
@@ -206,7 +206,6 @@ pub struct RsTsVisitor {
     crate_name: String,
     file: PathBuf,
     base_dir: PathBuf,
-    imports: Vec<String>,
 
     pub events: Vec<EventDefinition>,
     pub commands: Vec<CommandDefinition>,
@@ -220,12 +219,12 @@ impl RsTsVisitor {
         F: AsRef<Path>,
     {
         let mut crate_name = PathBuf::from({
-            let f = file
+            
+            file
                 .as_ref()
                 .display()
                 .to_string()
-                .replace(&base_dir.as_ref().display().to_string(), "");
-            f
+                .replace(&base_dir.as_ref().display().to_string(), "")
         })
         .display()
         .to_string()
@@ -245,7 +244,6 @@ impl RsTsVisitor {
             app_handle_vars: HashSet::new(),
             vars: HashMap::new(),
             events: Vec::new(),
-            imports: collect_imports(&file),
             base_dir: base_dir.as_ref().to_path_buf(),
             file: file.as_ref().to_path_buf(),
             commands: Vec::new(),
@@ -286,7 +284,7 @@ impl RsTsVisitor {
             if let Some(std) = standard_type_assoc(ty_str.split("::").last().unwrap()) {
                 Some(TypeRepr::Simple("".to_string(), std.to_string()))
             } else {
-                return TypeRepr::from_syn_type("", ty_orig);
+                TypeRepr::from_syn_type("", ty_orig)
             }
         } else {
             None
@@ -304,39 +302,6 @@ impl RsTsVisitor {
 
     fn is_type_excluded(ty: &syn::Type) -> bool {
         quote::quote!(#ty).to_string().contains("AppHandle")
-    }
-
-    pub fn find<F, B>(&self, file: F, base_dir: B)
-    where
-        F: AsRef<Path>,
-        B: AsRef<Path>,
-    {
-        println!("{}", file.as_ref().display());
-        let content = fs::read_to_string(file.as_ref()).unwrap();
-        let file_syn = syn::parse_file(&content).unwrap();
-        let items = &file_syn.items;
-
-        for item in items {
-            if let syn::Item::Struct(struct_def) = item {
-                let name = struct_def.ident.to_string();
-                let mut fields = HashMap::new();
-                let location = format!(
-                    "Definition: {}:{}",
-                    file.as_ref()
-                        .display()
-                        .to_string()
-                        .replace(&base_dir.as_ref().display().to_string(), ""),
-                    struct_def.struct_token.span().start().line
-                );
-                for field in &struct_def.fields {
-                    if let Some(type_rep) = TypeRepr::from_syn_type("", &field.ty) {
-                        fields
-                            .entry(field.ident.as_ref().unwrap().to_string())
-                            .or_insert(type_rep);
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -388,11 +353,10 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
             }
 
             let mut ret_type = None;
-            if let syn::ReturnType::Type(_, ty) = &fn_def.sig.output {
-                if let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref()) {
+            if let syn::ReturnType::Type(_, ty) = &fn_def.sig.output
+                && let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref()) {
                     ret_type = Some(ret_typ);
                 }
-            }
             let location = format!(
                 "Definition: {}:{}",
                 self.file
@@ -417,17 +381,15 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
 
     // Detecta parámetros de función: fn foo(app: AppHandle, ...)
     fn visit_fn_arg(&mut self, node: &'ast FnArg) {
-        if let FnArg::Typed(pat_type) = node {
-            if let Some(name) = Self::extract_pat_ident(&pat_type.pat) {
+        if let FnArg::Typed(pat_type) = node
+            && let Some(name) = Self::extract_pat_ident(&pat_type.pat) {
                 if Self::is_app_type(&pat_type.ty) {
                     self.app_handle_vars.insert(name);
-                } else if Self::type_as_path_string(&pat_type.ty).is_some() {
-                    if let Some(ty) = self.get_type_repr(&pat_type.ty) {
+                } else if Self::type_as_path_string(&pat_type.ty).is_some()
+                    && let Some(ty) = self.get_type_repr(&pat_type.ty) {
                         self.vars.insert(name, ty);
                     }
-                }
             }
-        }
         syn::visit::visit_fn_arg(self, node);
     }
 
@@ -439,11 +401,10 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                 if let Some(name) = Self::extract_pat_ident(pat) {
                     if Self::is_app_type(ty) {
                         self.app_handle_vars.insert(name);
-                    } else if Self::type_as_path_string(ty).is_some() {
-                        if let Some(ty) = self.get_type_repr(ty) {
+                    } else if Self::type_as_path_string(ty).is_some()
+                        && let Some(ty) = self.get_type_repr(ty) {
                             self.vars.insert(name, ty);
                         }
-                    }
                 }
             }
             // sin tipo explícito: let handle2 = handle1 o let x = expr
@@ -466,13 +427,11 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
     // Parámetros de closure: |app: &mut tauri::App| { ... }
     fn visit_expr_closure(&mut self, node: &'ast ExprClosure) {
         for input in &node.inputs {
-            if let Pat::Type(PatType { ty, pat, .. }) = input {
-                if Self::is_app_type(ty) {
-                    if let Some(name) = Self::extract_pat_ident(pat) {
+            if let Pat::Type(PatType { ty, pat, .. }) = input
+                && Self::is_app_type(ty)
+                    && let Some(name) = Self::extract_pat_ident(pat) {
                         self.app_handle_vars.insert(name);
                     }
-                }
-            }
         }
         syn::visit::visit_expr_closure(self, node);
     }
@@ -491,7 +450,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                 match node.method.to_string().as_str() {
                     "emit" => {
                         self.events.push(EventDefinition {
-                            name: args.get(0).unwrap().replace('"', ""),
+                            name: args.first().unwrap().replace('"', ""),
                             ty: self.vars[args.get(1).unwrap()].clone(),
                             file: self.file.clone(),
                         });
@@ -505,7 +464,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                     }
                     "emit_str" => {
                         self.events.push(EventDefinition {
-                            name: args.get(0).unwrap().replace('"', ""),
+                            name: args.first().unwrap().replace('"', ""),
                             ty: TypeRepr::Simple("".to_string(), "String".to_string()),
                             file: self.file.clone(),
                         });

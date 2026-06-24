@@ -35,7 +35,7 @@ impl Hash for StructDefinition {
 
 impl StructDefinition {
     pub fn get_full_qualified_name(&self) -> String {
-        return format!("{}::{}", self.crate_name, self.name);
+        format!("{}::{}", self.crate_name, self.name)
     }
 
     pub fn find<F, B>(file: F, base_dir: B) -> HashMap<String, StructDefinition>
