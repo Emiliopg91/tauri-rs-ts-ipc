@@ -18,19 +18,6 @@ pub struct CommandDefinition {
 }
 
 impl CommandDefinition {
-    fn has_tauri_command_attr(attrs: &[syn::Attribute]) -> bool {
-        attrs.iter().any(|attr| {
-            let path = attr.path();
-            path.segments.len() == 2
-                && path.segments[0].ident == "tauri"
-                && path.segments[1].ident == "command"
-        })
-    }
-
-    fn is_type_excluded(ty: &syn::Type) -> bool {
-        quote::quote!(#ty).to_string().contains("AppHandle")
-    }
-
     pub fn get_inner_leafs(&self) -> Vec<String> {
         let imports = collect_imports(&self.syn_file);
 

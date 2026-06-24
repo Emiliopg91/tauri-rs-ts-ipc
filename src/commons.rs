@@ -1,8 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     path::{Path, PathBuf},
-    process::exit,
 };
 
 use quote::ToTokens;
