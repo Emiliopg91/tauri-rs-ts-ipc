@@ -145,18 +145,8 @@ impl TypeRepr {
     }
 }
 
-pub fn collect_imports<T>(file: T) -> Vec<String>
-where
-    T: AsRef<Path>,
-{
-    let content = fs::read_to_string(file.as_ref()).unwrap();
-    let file = syn::parse_file(&content);
-    if file.is_err() {
-        exit(0);
-    }
-    let file = file.unwrap();
+pub fn collect_imports(file: &syn::File) -> Vec<String> {
     let mut imports = Vec::new();
-
     for item in &file.items {
         if let syn::Item::Use(use_item) = item {
             collect_use_tree(&use_item.tree, String::new(), &mut imports);
@@ -210,6 +200,7 @@ pub struct RsTsVisitor {
 
     crate_name: String,
     file: PathBuf,
+    syn_file: syn::File,
     base_dir: PathBuf,
 
     pub events: Vec<EventDefinition>,
@@ -218,13 +209,14 @@ pub struct RsTsVisitor {
 }
 
 impl RsTsVisitor {
-    pub fn new<F, B>(file: F, base_dir: B) -> Self
+    pub fn new<F, B>(file: &(F, syn::File), base_dir: B) -> Self
     where
         B: AsRef<Path>,
         F: AsRef<Path>,
     {
         let mut crate_name = PathBuf::from({
-            file.as_ref()
+            file.0
+                .as_ref()
                 .display()
                 .to_string()
                 .replace(&base_dir.as_ref().display().to_string(), "")
@@ -248,7 +240,8 @@ impl RsTsVisitor {
             vars: HashMap::new(),
             events: Vec::new(),
             base_dir: base_dir.as_ref().to_path_buf(),
-            file: file.as_ref().to_path_buf(),
+            file: file.0.as_ref().to_path_buf(),
+            syn_file: file.1.clone(),
             commands: Vec::new(),
             structs: Vec::new(),
         }
@@ -332,6 +325,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
             fields,
             location,
             file: self.file.clone(),
+            syn_file: self.syn_file.clone(),
             crate_name: self.crate_name.clone(),
         });
     }
@@ -376,6 +370,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                 params,
                 param_names,
                 file: self.file.clone(),
+                syn_file: self.syn_file.clone(),
                 location,
             });
         }
@@ -461,6 +456,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                             name: args.first().unwrap().replace('"', ""),
                             ty: self.vars[args.get(1).unwrap()].clone(),
                             file: self.file.clone(),
+                            syn_file: self.syn_file.clone(),
                         });
                     }
                     "emit_to" => {
@@ -468,6 +464,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                             name: args.get(1).unwrap().replace('"', ""),
                             ty: self.vars[args.get(2).unwrap()].clone(),
                             file: self.file.clone(),
+                            syn_file: self.syn_file.clone(),
                         });
                     }
                     "emit_str" => {
@@ -475,6 +472,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                             name: args.first().unwrap().replace('"', ""),
                             ty: TypeRepr::Simple("".to_string(), "String".to_string()),
                             file: self.file.clone(),
+                            syn_file: self.syn_file.clone(),
                         });
                     }
                     "emit_str_to" => {
@@ -482,6 +480,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                             name: args.get(1).unwrap().replace('"', ""),
                             ty: TypeRepr::Simple("".to_string(), "String".to_string()),
                             file: self.file.clone(),
+                            syn_file: self.syn_file.clone(),
                         });
                     }
                     _ => (),

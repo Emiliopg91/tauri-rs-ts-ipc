@@ -2,10 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
-    process::exit,
 };
-
-use syn::spanned::Spanned;
 
 use crate::commons::{TypeRepr, collect_imports, standard_type_assoc};
 
@@ -17,74 +14,10 @@ pub struct CommandDefinition {
     pub params: HashMap<String, TypeRepr>,
     pub location: String,
     pub file: PathBuf,
+    pub syn_file: syn::File,
 }
 
 impl CommandDefinition {
-    pub fn find<F, B>(file: F, base_dir: B) -> Vec<CommandDefinition>
-    where
-        F: AsRef<Path>,
-        B: AsRef<Path>,
-    {
-        let content = fs::read_to_string(file.as_ref()).unwrap();
-        let file_syn = syn::parse_file(&content);
-        if file_syn.is_err() {
-            exit(0);
-        }
-        let file_syn = file_syn.unwrap();
-        let items = file_syn.items;
-
-        let mut res = Vec::new();
-
-        for item in items {
-            if let syn::Item::Fn(fn_def) = item
-                && Self::has_tauri_command_attr(&fn_def.attrs)
-            {
-                let name = fn_def.sig.ident.to_string();
-
-                let mut param_names = Vec::new();
-                let mut params = HashMap::new();
-                for input in &fn_def.sig.inputs {
-                    if let syn::FnArg::Typed(pat_type) = input
-                        && let syn::Pat::Ident(id) = pat_type.pat.as_ref()
-                        && !Self::is_type_excluded(&pat_type.ty)
-                    {
-                        let name = id.ident.to_string();
-                        param_names.push(name.clone());
-                        if let Some(par_ty) = TypeRepr::from_syn_type("", &pat_type.ty) {
-                            params.entry(name).or_insert(par_ty);
-                        }
-                    }
-                }
-
-                let mut ret_type = None;
-                if let syn::ReturnType::Type(_, ty) = &fn_def.sig.output
-                    && let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref())
-                {
-                    ret_type = Some(ret_typ);
-                }
-                let location = format!(
-                    "Definition: {}:{}",
-                    file.as_ref()
-                        .display()
-                        .to_string()
-                        .replace(&base_dir.as_ref().display().to_string(), ""),
-                    fn_def.sig.span().start().line
-                );
-
-                res.push(Self {
-                    name,
-                    ret_type,
-                    params,
-                    param_names,
-                    file: file.as_ref().to_path_buf(),
-                    location,
-                });
-            }
-        }
-
-        res
-    }
-
     fn has_tauri_command_attr(attrs: &[syn::Attribute]) -> bool {
         attrs.iter().any(|attr| {
             let path = attr.path();
@@ -99,7 +32,7 @@ impl CommandDefinition {
     }
 
     pub fn get_inner_leafs(&self) -> Vec<String> {
-        let imports = collect_imports(&self.file);
+        let imports = collect_imports(&self.syn_file);
 
         let mut types = Vec::new();
         for param in &self.params {

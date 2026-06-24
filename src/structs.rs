@@ -5,8 +5,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use syn::spanned::Spanned;
-
 use crate::commons::{TypeRepr, collect_imports, standard_type_assoc};
 
 #[derive(Debug, Clone)]
@@ -15,6 +13,7 @@ pub struct StructDefinition {
     pub fields: HashMap<String, TypeRepr>,
     pub location: String,
     pub file: PathBuf,
+    pub syn_file: syn::File,
     pub crate_name: String,
 }
 
@@ -60,7 +59,7 @@ impl StructDefinition {
     }
 
     pub fn get_inner_leafs(&self) -> Vec<String> {
-        let imports = collect_imports(&self.file);
+        let imports = collect_imports(&self.syn_file);
 
         let mut types = Vec::new();
         for field in &self.fields {

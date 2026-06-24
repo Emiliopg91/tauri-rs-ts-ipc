@@ -11,12 +11,13 @@ pub struct EventDefinition {
     pub name: String,
     pub ty: TypeRepr,
     pub file: PathBuf,
+    pub syn_file: syn::File,
 }
 
 impl EventDefinition {
     pub fn get_inner_leafs(&self) -> Vec<String> {
         let mut res = Vec::new();
-        let imports = collect_imports(&self.file);
+        let imports = collect_imports(&self.syn_file);
         for ty in self.ty.inner_leaf_types() {
             let path = imports.iter().find(|i| i.ends_with(&ty)).unwrap_or(&ty);
             res.push(path.clone());

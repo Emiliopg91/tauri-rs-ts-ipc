@@ -17,7 +17,7 @@ use crate::{
     structs::StructDefinition,
 };
 
-fn find_rs_files<T>(path: T, out: &mut Vec<PathBuf>) -> Result<(), std::io::Error>
+fn find_rs_files<T>(path: T, out: &mut Vec<(PathBuf, syn::File)>) -> Result<(), std::io::Error>
 where
     T: AsRef<Path>,
 {
@@ -25,7 +25,15 @@ where
         let entry = entry.path();
         if entry.is_file() {
             if entry.extension().unwrap() == "rs" {
-                out.push(entry);
+                match fs::read_to_string(&entry) {
+                    Ok(content) => match syn::parse_file(&content) {
+                        Ok(syn_file) => {
+                            out.push((entry, syn_file));
+                        }
+                        Err(_) => exit(0),
+                    },
+                    Err(_) => exit(0),
+                }
             }
         } else if entry.is_dir() {
             find_rs_files(entry, out)?;
@@ -73,14 +81,8 @@ pub fn inner_build(
 
     println!("cargo:warning=Inspecting source code...");
     for file in &files {
-        let content = fs::read_to_string(file).unwrap();
-        let file_syn = syn::parse_file(&content);
-        if file_syn.is_err() {
-            exit(0);
-        }
-        let file_syn = file_syn.unwrap();
         let mut finder = RsTsVisitor::new(file, src_tauri_path);
-        finder.visit_file(&file_syn);
+        finder.visit_file(&file.1);
 
         for cmd in &finder.commands {
             cmd.get_inner_leafs()
