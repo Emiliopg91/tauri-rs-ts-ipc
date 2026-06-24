@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fs,
+    hash::Hash,
     path::{Path, PathBuf},
 };
 
@@ -17,7 +18,26 @@ pub struct StructDefinition {
     pub crate_name: String,
 }
 
+impl Eq for StructDefinition {}
+
+impl PartialEq for StructDefinition {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.crate_name == other.crate_name
+    }
+}
+
+impl Hash for StructDefinition {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.crate_name.hash(state);
+    }
+}
+
 impl StructDefinition {
+    pub fn get_full_qualified_name(&self) -> String {
+        return format!("{}::{}", self.crate_name, self.name);
+    }
+
     pub fn find<F, B>(file: F, base_dir: B) -> HashMap<String, StructDefinition>
     where
         F: AsRef<Path>,

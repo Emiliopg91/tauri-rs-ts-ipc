@@ -67,7 +67,8 @@ pub fn inner_build(
 
     let mut commands = Vec::new();
     let mut events = Vec::new();
-    let mut structs = Vec::new();
+    let mut structs = HashSet::new();
+    let mut used_structs = HashSet::new();
 
     println!("cargo:warning=Inspecting source code...");
     for file in &files {
@@ -76,113 +77,54 @@ pub fn inner_build(
         let mut finder = RsTsVisitor::new(file, src_tauri_path);
         finder.visit_file(&file_syn);
 
-        for cmd in finder.commands {
-            commands.push(cmd);
+        for cmd in &finder.commands {
+            cmd.get_inner_leafs()
+                .iter()
+                .filter(|s| s.starts_with("crate::"))
+                .for_each(|s| {
+                    used_structs.insert(s.clone());
+                });
+            commands.push(cmd.clone());
         }
 
-        for event in finder.events {
-            events.push(event);
+        for event in &finder.events {
+            event
+                .get_inner_leafs()
+                .iter()
+                .filter(|s| s.starts_with("crate::"))
+                .for_each(|s| {
+                    used_structs.insert(s.clone());
+                });
+            events.push(event.clone());
         }
 
-        for struct_d in finder.structs {
-            structs.push(struct_d);
+        for struct_d in &finder.structs {
+            struct_d
+                .get_inner_leafs()
+                .iter()
+                .filter(|s| s.starts_with("crate::"))
+                .for_each(|s| {
+                    used_structs.insert(s.clone());
+                });
+            structs.insert(struct_d.clone());
         }
     }
+
+    let mut used_structs = used_structs
+        .iter()
+        .filter_map(|f| {
+            for struct_d in &structs {
+                if struct_d.get_full_qualified_name() == *f {
+                    return Some(struct_d.clone());
+                }
+            }
+            return None;
+        })
+        .collect::<Vec<StructDefinition>>();
+
     println!("cargo:warning=  Found {} commands", commands.len());
     println!("cargo:warning=  Found {} events", events.len());
-    println!("cargo:warning=  Found {} structs", structs.len());
-
-    let mut files_for_structs: HashMap<String, Vec<String>> = HashMap::new();
-    for cmd in &commands {
-        for pat in cmd.get_inner_leafs() {
-            let struct_name = pat.split("::").last().unwrap_or(&pat);
-
-            if let Some(path) = pat.strip_prefix("crate::") {
-                let path = PathBuf::from(&src_tauri_path)
-                    .join(path.replace("::", "/"))
-                    .parent()
-                    .unwrap()
-                    .to_path_buf();
-                let mut path_str = format!("{}.rs", path.display());
-                if !fs::exists(&path_str).unwrap() {
-                    path_str = format!("{}/mod.rs", path.display());
-                }
-
-                let entry = files_for_structs.entry(path_str).or_default();
-                entry.push(struct_name.to_string());
-            }
-        }
-    }
-    for event in &events {
-        for pat in event.get_inner_leafs() {
-            let struct_name = pat.split("::").last().unwrap_or(&pat);
-
-            if let Some(path) = pat.strip_prefix("crate::") {
-                let path = PathBuf::from(&src_tauri_path)
-                    .join(path.replace("::", "/"))
-                    .parent()
-                    .unwrap()
-                    .to_path_buf();
-                let mut path_str = format!("{}.rs", path.display());
-                if !fs::exists(&path_str).unwrap() {
-                    path_str = format!("{}/mod.rs", path.display());
-                }
-
-                let entry = files_for_structs.entry(path_str).or_default();
-                entry.push(struct_name.to_string());
-            }
-        }
-    }
-
-    let mut checked_structs = Vec::new();
-    let mut already_added = HashSet::new();
-    loop {
-        let mut new_structs = Vec::new();
-        for (file, structs_to_find) in &files_for_structs {
-            let content = fs::read_to_string(file).unwrap();
-            let file_syn = syn::parse_file(&content).unwrap();
-            let mut finder = RsTsVisitor::new(file, src_tauri_path);
-            finder.visit_file(&file_syn);
-
-            for struct_d in finder.structs {
-                if structs_to_find.contains(&struct_d.name)
-                    && already_added.insert(struct_d.name.clone())
-                {
-                    new_structs.push(struct_d);
-                }
-            }
-        }
-
-        files_for_structs.clear();
-        for struct_d in &new_structs {
-            for pat in struct_d.get_inner_leafs() {
-                let struct_name = pat.split("::").last().unwrap_or(&pat);
-
-                if let Some(path) = pat.strip_prefix("crate::") {
-                    let path = PathBuf::from(&src_tauri_path)
-                        .join(path.replace("::", "/"))
-                        .parent()
-                        .unwrap()
-                        .to_path_buf();
-                    let mut path_str = format!("{}.rs", path.display());
-                    if !fs::exists(&path_str).unwrap() {
-                        path_str = format!("{}/mod.rs", path.display());
-                    }
-
-                    let entry = files_for_structs.entry(path_str).or_default();
-                    entry.push(struct_name.to_string());
-                }
-            }
-        }
-
-        for ns in new_structs {
-            checked_structs.push(ns);
-        }
-        if files_for_structs.is_empty() {
-            break;
-        }
-    }
-    println!("cargo:warning=  Found {} structs", checked_structs.len());
+    println!("cargo:warning=  Found {} structs", used_structs.len());
 
     println!(
         "cargo:warning=Generating models file in '{}'",
@@ -192,8 +134,9 @@ pub fn inner_build(
             .replace(&project_dir.display().to_string(), "")[1..]
             .to_string()
     );
-    checked_structs.sort_by_key(|e| e.name.clone());
-    StructDefinition::generate_file(models_path, checked_structs);
+    used_structs.sort_by_key(|e| e.name.clone());
+    StructDefinition::generate_file(models_path, used_structs);
+    println!("cargo:warning=  Done");
 
     println!(
         "cargo:warning=Generating client file in '{}'",
@@ -205,6 +148,7 @@ pub fn inner_build(
     );
     commands.sort_by_key(|e| e.name.clone());
     CommandDefinition::generate_file(client_path, commands);
+    println!("cargo:warning=  Done");
 
     println!(
         "cargo:warning=Generating listener file in '{}'",
@@ -216,6 +160,7 @@ pub fn inner_build(
     );
     events.sort_by_key(|e| e.name.clone());
     EventDefinition::generate_file(listener_path, events);
+    println!("cargo:warning=  Done");
 
     /*
     if !fs::exists(&backend_dir).unwrap() {

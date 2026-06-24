@@ -179,7 +179,7 @@ impl<'ast> Visit<'ast> for EmitFinder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventDefinition {
     pub name: String,
     pub ty: TypeRepr,
