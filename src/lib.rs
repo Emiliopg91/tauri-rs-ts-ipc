@@ -7,6 +7,7 @@ use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
+    process::exit,
 };
 
 use syn::visit::Visit;
@@ -73,7 +74,11 @@ pub fn inner_build(
     println!("cargo:warning=Inspecting source code...");
     for file in &files {
         let content = fs::read_to_string(file).unwrap();
-        let file_syn = syn::parse_file(&content).unwrap();
+        let file_syn = syn::parse_file(&content);
+        if file_syn.is_err() {
+            exit(0);
+        }
+        let file_syn = file_syn.unwrap();
         let mut finder = RsTsVisitor::new(file, src_tauri_path);
         finder.visit_file(&file_syn);
 

@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
+    process::exit,
 };
 
 use quote::ToTokens;
@@ -149,7 +150,11 @@ where
     T: AsRef<Path>,
 {
     let content = fs::read_to_string(file.as_ref()).unwrap();
-    let file = syn::parse_file(&content).unwrap();
+    let file = syn::parse_file(&content);
+    if file.is_err() {
+        exit(0);
+    }
+    let file = file.unwrap();
     let mut imports = Vec::new();
 
     for item in &file.items {
@@ -219,9 +224,7 @@ impl RsTsVisitor {
         F: AsRef<Path>,
     {
         let mut crate_name = PathBuf::from({
-            
-            file
-                .as_ref()
+            file.as_ref()
                 .display()
                 .to_string()
                 .replace(&base_dir.as_ref().display().to_string(), "")
@@ -354,9 +357,10 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
 
             let mut ret_type = None;
             if let syn::ReturnType::Type(_, ty) = &fn_def.sig.output
-                && let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref()) {
-                    ret_type = Some(ret_typ);
-                }
+                && let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref())
+            {
+                ret_type = Some(ret_typ);
+            }
             let location = format!(
                 "Definition: {}:{}",
                 self.file
@@ -382,14 +386,16 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
     // Detecta parámetros de función: fn foo(app: AppHandle, ...)
     fn visit_fn_arg(&mut self, node: &'ast FnArg) {
         if let FnArg::Typed(pat_type) = node
-            && let Some(name) = Self::extract_pat_ident(&pat_type.pat) {
-                if Self::is_app_type(&pat_type.ty) {
-                    self.app_handle_vars.insert(name);
-                } else if Self::type_as_path_string(&pat_type.ty).is_some()
-                    && let Some(ty) = self.get_type_repr(&pat_type.ty) {
-                        self.vars.insert(name, ty);
-                    }
+            && let Some(name) = Self::extract_pat_ident(&pat_type.pat)
+        {
+            if Self::is_app_type(&pat_type.ty) {
+                self.app_handle_vars.insert(name);
+            } else if Self::type_as_path_string(&pat_type.ty).is_some()
+                && let Some(ty) = self.get_type_repr(&pat_type.ty)
+            {
+                self.vars.insert(name, ty);
             }
+        }
         syn::visit::visit_fn_arg(self, node);
     }
 
@@ -402,9 +408,10 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                     if Self::is_app_type(ty) {
                         self.app_handle_vars.insert(name);
                     } else if Self::type_as_path_string(ty).is_some()
-                        && let Some(ty) = self.get_type_repr(ty) {
-                            self.vars.insert(name, ty);
-                        }
+                        && let Some(ty) = self.get_type_repr(ty)
+                    {
+                        self.vars.insert(name, ty);
+                    }
                 }
             }
             // sin tipo explícito: let handle2 = handle1 o let x = expr
@@ -429,9 +436,10 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
         for input in &node.inputs {
             if let Pat::Type(PatType { ty, pat, .. }) = input
                 && Self::is_app_type(ty)
-                    && let Some(name) = Self::extract_pat_ident(pat) {
-                        self.app_handle_vars.insert(name);
-                    }
+                && let Some(name) = Self::extract_pat_ident(pat)
+            {
+                self.app_handle_vars.insert(name);
+            }
         }
         syn::visit::visit_expr_closure(self, node);
     }

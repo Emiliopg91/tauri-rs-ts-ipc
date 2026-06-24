@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
+    process::exit,
 };
 
 use syn::spanned::Spanned;
@@ -25,7 +26,11 @@ impl CommandDefinition {
         B: AsRef<Path>,
     {
         let content = fs::read_to_string(file.as_ref()).unwrap();
-        let file_syn = syn::parse_file(&content).unwrap();
+        let file_syn = syn::parse_file(&content);
+        if file_syn.is_err() {
+            exit(0);
+        }
+        let file_syn = file_syn.unwrap();
         let items = file_syn.items;
 
         let mut res = Vec::new();
@@ -53,9 +58,10 @@ impl CommandDefinition {
 
                 let mut ret_type = None;
                 if let syn::ReturnType::Type(_, ty) = &fn_def.sig.output
-                    && let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref()) {
-                        ret_type = Some(ret_typ);
-                    }
+                    && let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref())
+                {
+                    ret_type = Some(ret_typ);
+                }
                 let location = format!(
                     "Definition: {}:{}",
                     file.as_ref()
