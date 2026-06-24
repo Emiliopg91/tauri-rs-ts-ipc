@@ -102,8 +102,14 @@ impl StructDefinition {
         code.push_str(&format!("// {}\n", &self.location));
         code.push_str(&format!("export interface {} {{\n", self.name));
 
-        for field in &self.fields {
-            code.push_str(&format!("  {}: {};\n", field.0, field.1.to_typescript()));
+        let mut keys = self.fields.keys().cloned().collect::<Vec<String>>();
+        keys.sort();
+        for key in keys {
+            code.push_str(&format!(
+                "  {}: {};\n",
+                key,
+                self.fields.get(&key).unwrap().to_typescript()
+            ));
         }
 
         code.push('}');
