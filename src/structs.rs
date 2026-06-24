@@ -38,6 +38,7 @@ impl StructDefinition {
         }
         crate_name = format!("crate::{}", crate_name);
 
+        println!("{}", file.as_ref().display());
         let content = fs::read_to_string(file.as_ref()).unwrap();
         let file_syn = syn::parse_file(&content).unwrap();
         let items = &file_syn.items;

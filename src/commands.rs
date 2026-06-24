@@ -8,6 +8,7 @@ use syn::spanned::Spanned;
 
 use crate::commons::{TypeRepr, collect_imports, standard_type_assoc};
 
+#[derive(Debug)]
 pub struct CommandDefinition {
     pub name: String,
     pub ret_type: Option<TypeRepr>,
