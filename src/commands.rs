@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::commons::{TypeRepr, collect_imports, standard_type_assoc};
+use crate::commons::{TypeRepr,  standard_type_assoc};
 
 #[derive(Debug, Clone)]
 pub struct CommandDefinition {
@@ -15,12 +15,11 @@ pub struct CommandDefinition {
     pub location: String,
     pub file: PathBuf,
     pub syn_file: syn::File,
+    pub imports: Vec<String>
 }
 
 impl CommandDefinition {
     pub fn get_inner_leafs(&self) -> Vec<String> {
-        let imports = collect_imports(&self.syn_file);
-
         let mut types = Vec::new();
         for param in &self.params {
             types.push(param.1);
@@ -32,7 +31,7 @@ impl CommandDefinition {
         let mut res = Vec::new();
         for ty in types {
             for ty2 in ty.inner_leaf_types() {
-                let path = imports.iter().find(|i| i.ends_with(&ty2)).unwrap_or(&ty2);
+                let path = self.imports.iter().find(|i| i.ends_with(&ty2)).unwrap_or(&ty2);
                 res.push(path.clone());
             }
         }
@@ -99,7 +98,7 @@ impl CommandDefinition {
         res
     }
 
-    pub fn generate_file<T>(file: T, commands: Vec<CommandDefinition>)
+    pub fn generate_file<T>(file: T, commands:& Vec<CommandDefinition>)
     where
         T: AsRef<Path>,
     {
@@ -108,7 +107,7 @@ impl CommandDefinition {
         }
 
         let mut struct_names = HashSet::new();
-        for cmd in &commands {
+        for cmd in commands {
             for ty in cmd.get_inner_leafs() {
                 if let Some(name) = ty.split("::").last()
                     && standard_type_assoc(name).is_none()

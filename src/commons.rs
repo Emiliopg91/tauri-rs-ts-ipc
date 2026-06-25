@@ -67,14 +67,13 @@ impl TypeRepr {
                                 syn::GenericArgument::Type(t) => {
                                     Some(TypeRepr::from_syn_type(crate_name, t))
                                 }
-                                _ => None, // ignora lifetimes, const generics, etc.
+                                _ => None,
                             })
                             .collect();
 
                         let wrapper = if ident == "Vec" {
                             Some(GenericWrapper::Vec)
                         } else if ident.ends_with("Map") {
-                            // HashMap, BTreeMap, IndexMap... igual que el original
                             Some(GenericWrapper::Map)
                         } else if ident == "Option" {
                             Some(GenericWrapper::Option)
@@ -200,6 +199,7 @@ pub struct RsTsVisitor {
     file: PathBuf,
     syn_file: syn::File,
     base_dir: PathBuf,
+    imports : Vec<String>,
 
     pub events: Vec<EventDefinition>,
     pub commands: Vec<CommandDefinition>,
@@ -242,6 +242,7 @@ impl RsTsVisitor {
             syn_file: file.1.clone(),
             commands: Vec::new(),
             structs: Vec::new(),
+            imports:collect_imports(&file.1)
         }
     }
 
@@ -325,6 +326,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
             file: self.file.clone(),
             syn_file: self.syn_file.clone(),
             crate_name: self.crate_name.clone(),
+            imports: self.imports.clone()
         });
     }
 
@@ -370,6 +372,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                 file: self.file.clone(),
                 syn_file: self.syn_file.clone(),
                 location,
+                imports:collect_imports(&self.syn_file)
             });
         }
 
@@ -455,6 +458,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                             ty: self.vars[args.get(1).unwrap()].clone(),
                             file: self.file.clone(),
                             syn_file: self.syn_file.clone(),
+                            imports:collect_imports(&self.syn_file)
                         });
                     }
                     "emit_to" => {
@@ -463,6 +467,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                             ty: self.vars[args.get(2).unwrap()].clone(),
                             file: self.file.clone(),
                             syn_file: self.syn_file.clone(),
+                            imports:collect_imports(&self.syn_file)
                         });
                     }
                     "emit_str" => {
@@ -471,6 +476,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                             ty: TypeRepr::Simple("".to_string(), "String".to_string()),
                             file: self.file.clone(),
                             syn_file: self.syn_file.clone(),
+                            imports:collect_imports(&self.syn_file)
                         });
                     }
                     "emit_str_to" => {
@@ -479,6 +485,7 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                             ty: TypeRepr::Simple("".to_string(), "String".to_string()),
                             file: self.file.clone(),
                             syn_file: self.syn_file.clone(),
+                            imports:collect_imports(&self.syn_file)
                         });
                     }
                     _ => (),

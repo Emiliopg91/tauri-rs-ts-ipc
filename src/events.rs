@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::commons::{TypeRepr, collect_imports, standard_type_assoc};
+use crate::commons::{TypeRepr, standard_type_assoc};
 
 #[derive(Debug, Clone)]
 pub struct EventDefinition {
@@ -12,14 +12,14 @@ pub struct EventDefinition {
     pub ty: TypeRepr,
     pub file: PathBuf,
     pub syn_file: syn::File,
+    pub imports: Vec<String>
 }
 
 impl EventDefinition {
     pub fn get_inner_leafs(&self) -> Vec<String> {
         let mut res = Vec::new();
-        let imports = collect_imports(&self.syn_file);
         for ty in self.ty.inner_leaf_types() {
-            let path = imports.iter().find(|i| i.ends_with(&ty)).unwrap_or(&ty);
+            let path = self.imports.iter().find(|i| i.ends_with(&ty)).unwrap_or(&ty);
             res.push(path.clone());
         }
 
@@ -65,7 +65,7 @@ impl EventDefinition {
         res
     }
 
-    pub fn generate_file<T>(file: T, events: Vec<EventDefinition>)
+    pub fn generate_file<T>(file: T, events: &Vec<EventDefinition>)
     where
         T: AsRef<Path>,
     {
@@ -74,7 +74,7 @@ impl EventDefinition {
         }
 
         let mut struct_names = HashSet::new();
-        for event in &events {
+        for event in events {
             for ty in event.get_inner_leafs() {
                 if let Some(name) = ty.split("::").last()
                     && standard_type_assoc(name).is_none()

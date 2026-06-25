@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::commons::{TypeRepr, collect_imports, standard_type_assoc};
+use crate::commons::{standard_type_assoc, TypeRepr};
 
 #[derive(Debug, Clone)]
 pub struct StructDefinition {
@@ -15,6 +15,7 @@ pub struct StructDefinition {
     pub file: PathBuf,
     pub syn_file: syn::File,
     pub crate_name: String,
+    pub imports: Vec<String>,
 }
 
 impl Eq for StructDefinition {}
@@ -59,8 +60,6 @@ impl StructDefinition {
     }
 
     pub fn get_inner_leafs(&self) -> Vec<String> {
-        let imports = collect_imports(&self.syn_file);
-
         let mut types = Vec::new();
         for field in &self.fields {
             types.push(field.1);
@@ -71,7 +70,8 @@ impl StructDefinition {
             for ty2 in ty.inner_leaf_types() {
                 if standard_type_assoc(&ty2).is_none() {
                     let fallback_path = format!("{}::{}", self.crate_name, ty2).to_string();
-                    let path = imports
+                    let path = self
+                        .imports
                         .iter()
                         .find(|i| i.ends_with(&ty2))
                         .unwrap_or(&fallback_path);
@@ -85,7 +85,7 @@ impl StructDefinition {
         res
     }
 
-    pub fn generate_file<F>(file: F, structs: Vec<StructDefinition>)
+    pub fn generate_file<F>(file: F, structs: &Vec<StructDefinition>)
     where
         F: AsRef<Path>,
     {
