@@ -3,10 +3,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use itertools::Itertools;
 use quote::ToTokens;
-use syn::{
-    ExprClosure, ExprMethodCall, FnArg, Local, Pat, PatType, Type, visit::Visit,
-};
+use syn::{ExprClosure, ExprMethodCall, FnArg, Local, Pat, PatType, Type, visit::Visit};
 
 use crate::{commands::CommandDefinition, events::EventDefinition, structs::StructDefinition};
 
@@ -30,6 +29,7 @@ pub enum GenericWrapper {
     Map,
     Option,
     Result,
+    Tuple,
 }
 
 #[derive(Debug, Clone)]
@@ -47,8 +47,20 @@ impl TypeRepr {
             syn::Type::Reference(r) => TypeRepr::from_syn_type(crate_name, &r.elem),
             syn::Type::Paren(p) => TypeRepr::from_syn_type(crate_name, &p.elem),
             syn::Type::Group(g) => TypeRepr::from_syn_type(crate_name, &g.elem),
-            syn::Type::Tuple(t) if t.elems.is_empty() => {
-                Some(TypeRepr::Simple(crate_name.to_string(), "()".to_string()))
+            syn::Type::Tuple(t) => {
+                if t.elems.len() == 0 {
+                    Some(TypeRepr::Simple(crate_name.to_string(), "()".to_string()))
+                } else {
+                    let mut types = Vec::new();
+                    for elem in &t.elems {
+                        types.push(TypeRepr::from_syn_type(crate_name, &elem));
+                    }
+
+                    Some(TypeRepr::Generic {
+                        wrapper: GenericWrapper::Tuple,
+                        types,
+                    })
+                }
             }
             syn::Type::Path(type_path) => {
                 let segment = type_path
@@ -122,6 +134,13 @@ impl TypeRepr {
                         let second = types[1].to_typescript();
                         format!("Record<{first}, {second}>")
                     }
+                    GenericWrapper::Tuple => {
+                        let types = types
+                            .iter()
+                            .map(|t| t.to_typescript())
+                            .collect::<Vec<String>>();
+                        format!("[{}]", types.join(", "))
+                    }
                     GenericWrapper::Result => first,
                 }
             }
@@ -152,7 +171,7 @@ pub struct RsTsVisitor {
     syn_file: syn::File,
     base_dir: PathBuf,
 
-    imports : HashSet<String>,
+    imports: HashSet<String>,
     crate_hier: String,
 
     pub events: Vec<EventDefinition>,
@@ -196,8 +215,8 @@ impl RsTsVisitor {
             syn_file: file.1.clone(),
             commands: Vec::new(),
             structs: Vec::new(),
-            imports:HashSet::new(),
-            crate_hier: String::new()
+            imports: HashSet::new(),
+            crate_hier: String::new(),
         }
     }
 
@@ -244,18 +263,38 @@ impl RsTsVisitor {
 
 impl<'ast> Visit<'ast> for RsTsVisitor {
     fn visit_item_struct(&mut self, struct_def: &'ast syn::ItemStruct) {
-        self.structs.push(StructDefinition::from_item_struct(struct_def, &self.base_dir, &self.file, &self.syn_file, &self.crate_name, &self.imports));
+        self.structs.push(StructDefinition::from_item_struct(
+            struct_def,
+            &self.base_dir,
+            &self.file,
+            &self.syn_file,
+            &self.crate_name,
+            &self.imports,
+        ));
     }
 
     fn visit_item_fn(&mut self, fn_def: &'ast syn::ItemFn) {
-        if let Some(cmd) = CommandDefinition::from_item_fn(fn_def, &self.imports, &self.base_dir, &self.file, &self.syn_file){
+        if let Some(cmd) = CommandDefinition::from_item_fn(
+            fn_def,
+            &self.imports,
+            &self.base_dir,
+            &self.file,
+            &self.syn_file,
+        ) {
             self.commands.push(cmd);
         }
         syn::visit::visit_item_fn(self, fn_def);
     }
-    
+
     fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
-        if let Some(event )=EventDefinition::from_expr_method_call(node, &self.app_handle_vars, &self.vars, &self.imports, &self.file, &self.syn_file){
+        if let Some(event) = EventDefinition::from_expr_method_call(
+            node,
+            &self.app_handle_vars,
+            &self.vars,
+            &self.imports,
+            &self.file,
+            &self.syn_file,
+        ) {
             self.events.push(event);
         }
         syn::visit::visit_expr_method_call(self, node);
@@ -263,15 +302,16 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
 
     fn visit_use_path(&mut self, path: &'ast syn::UsePath) {
         let prev = self.crate_hier.clone();
-        self.crate_hier = format!("{}::{}",self.crate_hier,path.ident.to_string());
+        self.crate_hier = format!("{}::{}", self.crate_hier, path.ident);
         syn::visit::visit_use_path(self, path);
         self.crate_hier = prev;
     }
-    
+
     fn visit_use_name(&mut self, name: &'ast syn::UseName) {
         let full = format!("{}::{}", self.crate_hier, name.ident);
         syn::visit::visit_use_name(self, name);
-        self.imports.insert(full.strip_prefix("::").unwrap().to_string());
+        self.imports
+            .insert(full.strip_prefix("::").unwrap().to_string());
     }
 
     fn visit_fn_arg(&mut self, node: &'ast FnArg) {

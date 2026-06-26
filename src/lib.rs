@@ -52,16 +52,15 @@ pub fn inner_build(
     let latest = find_rs_files(src_tauri_path, &mut files).unwrap();
     println!("    Found {} files", files.len());
     let mut outdated = true;
+
+    #[cfg(not(debug_assertions))]
     if let Ok(exists) = fs::exists(client_path)
         && exists
+        && let Ok(metadata) = fs::metadata(client_path)
+        && let Ok(modified) = metadata.modified()
+        && modified >= latest
     {
-        if let Ok(metadata) = fs::metadata(client_path) {
-            if let Ok(modified) = metadata.modified()
-                && modified >= latest
-            {
-                outdated = false;
-            }
-        }
+        outdated = false;
     }
 
     if !outdated {

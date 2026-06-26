@@ -156,7 +156,7 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
 
     fn is_type_excluded(ty: &syn::Type) -> bool {
         for ity in &["AppHandle", "State", "Channel"]{
-            if quote::quote!(#ty).to_string() == ity.to_string() ||  quote::quote!(#ty).to_string().ends_with(&format!("::{}", ity)){
+            if quote::quote!(#ty).to_string() == *ity ||  quote::quote!(#ty).to_string().ends_with(&format!("::{}", ity)){
                 return true;
             }
         }
