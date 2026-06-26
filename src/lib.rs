@@ -8,7 +8,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::exit,
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 
 use syn::visit::Visit;
@@ -45,48 +45,72 @@ pub fn inner_build(
     client_path: &PathBuf,
     listener_path: &PathBuf,
 ) {
+    println!("------------- Rust <-> Typescript Generator -------------");
     let t0 = Instant::now();
-    println!("cargo:warning=Gathering Rust source codes...");
+    println!("  Gathering source codes files...");
     let mut files = Vec::new();
-    find_rs_files(src_tauri_path, &mut files).unwrap();
+    let latest = find_rs_files(src_tauri_path, &mut files).unwrap();
+    println!("    Found {} files", files.len());
+    let mut outdated = true;
+    if let Ok(exists) = fs::exists(client_path)
+        && exists
+    {
+        if let Ok(metadata) = fs::metadata(client_path) {
+            if let Ok(modified) = metadata.modified()
+                && modified >= latest
+            {
+                outdated = false;
+            }
+        }
+    }
 
-    let mut commands = Vec::new();
-    let mut events = Vec::new();
-    let mut used_structs = Vec::new();
+    if !outdated {
+        println!("  Up to date, nothing to do")
+    } else {
+        let mut commands = Vec::new();
+        let mut events = Vec::new();
+        let mut used_structs = Vec::new();
 
-    inspect_code(
-        src_tauri_path,
-        files,
-        &mut commands,
-        &mut events,
-        &mut used_structs,
-    );
+        inspect_code(
+            src_tauri_path,
+            files,
+            &mut commands,
+            &mut events,
+            &mut used_structs,
+        );
 
-    generate_files(
-        project_dir,
-        backend_dir,
-        models_path,
-        client_path,
-        listener_path,
-        &mut commands,
-        &mut events,
-        &mut used_structs,
-    );
+        generate_files(
+            project_dir,
+            backend_dir,
+            models_path,
+            client_path,
+            listener_path,
+            &mut commands,
+            &mut events,
+            &mut used_structs,
+        );
+    }
 
-    println!(
-        "cargo:warning=Finished after {:.3} seconds",
-        t0.elapsed().as_secs_f64(),
-    )
+    println!("  Finished after {:.3} seconds", t0.elapsed().as_secs_f64(),);
+    println!("---------------------------------------------------------");
 }
 
-fn find_rs_files<T>(path: T, out: &mut Vec<(PathBuf, syn::File)>) -> Result<(), std::io::Error>
+fn find_rs_files<T>(
+    path: T,
+    out: &mut Vec<(PathBuf, syn::File)>,
+) -> Result<SystemTime, std::io::Error>
 where
     T: AsRef<Path>,
 {
+    let mut latest = SystemTime::UNIX_EPOCH;
     for entry in fs::read_dir(path.as_ref())?.flatten() {
         let entry = entry.path();
         if entry.is_file() {
             if entry.extension().unwrap() == "rs" {
+                let modified = fs::metadata(&entry)?.modified()?;
+                if modified > latest {
+                    latest = modified;
+                }
                 match fs::read_to_string(&entry) {
                     Ok(content) => match syn::parse_file(&content) {
                         Ok(syn_file) => {
@@ -98,11 +122,14 @@ where
                 }
             }
         } else if entry.is_dir() {
-            find_rs_files(entry, out)?;
+            let dir_latest = find_rs_files(entry, out)?;
+            if dir_latest > latest {
+                latest = dir_latest;
+            }
         }
     }
 
-    Ok(())
+    Ok(latest)
 }
 
 fn generate_files(
@@ -120,7 +147,7 @@ fn generate_files(
     }
 
     println!(
-        "cargo:warning=Generating models file in '{}'",
+        "  Generating models file in '{}'",
         &models_path
             .display()
             .to_string()
@@ -128,10 +155,10 @@ fn generate_files(
     );
     used_structs.sort_by_key(|e| e.name.clone());
     StructDefinition::generate_file(models_path, used_structs);
-    println!("cargo:warning=  Done");
+    println!("    Done");
 
     println!(
-        "cargo:warning=Generating client file in '{}'",
+        "  Generating client file in '{}'",
         &client_path
             .display()
             .to_string()
@@ -139,10 +166,10 @@ fn generate_files(
     );
     commands.sort_by_key(|e| e.name.clone());
     CommandDefinition::generate_file(client_path, commands);
-    println!("cargo:warning=  Done");
+    println!("    Done");
 
     println!(
-        "cargo:warning=Generating listener file in '{}'",
+        "  Generating listener file in '{}'",
         &listener_path
             .display()
             .to_string()
@@ -150,7 +177,7 @@ fn generate_files(
     );
     events.sort_by_key(|e| e.name.clone());
     EventDefinition::generate_file(listener_path, events);
-    println!("cargo:warning=  Done");
+    println!("    Done");
 }
 
 fn inspect_code(
@@ -163,7 +190,7 @@ fn inspect_code(
     let mut structs = HashSet::new();
     let mut inner_used_structs = HashSet::new();
 
-    println!("cargo:warning=Inspecting source code...");
+    println!("  Inspecting source code...");
     for file in &files {
         let mut finder = RsTsVisitor::new(file, src_tauri_path);
         finder.visit_file(&file.1);
@@ -213,7 +240,7 @@ fn inspect_code(
         })
         .for_each(|e| used_structs.push(e));
 
-    println!("cargo:warning=  Found {} commands", commands.len());
-    println!("cargo:warning=  Found {} events", events.len());
-    println!("cargo:warning=  Found {} structs", used_structs.len());
+    println!("    Found {} commands", commands.len());
+    println!("    Found {} events", events.len());
+    println!("    Found {} structs", used_structs.len());
 }

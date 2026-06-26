@@ -5,7 +5,7 @@ use std::{
 
 use quote::ToTokens;
 use syn::{
-    ExprClosure, ExprMethodCall, FnArg, Local, Pat, PatType, Type, spanned::Spanned, visit::Visit,
+    ExprClosure, ExprMethodCall, FnArg, Local, Pat, PatType, Type, visit::Visit,
 };
 
 use crate::{commands::CommandDefinition, events::EventDefinition, structs::StructDefinition};
@@ -89,7 +89,7 @@ impl TypeRepr {
                                 types: inner_types,
                             }),
                             _ => {
-                                eprintln!("generic type `{ident}` not supported");
+                                eprintln!("    generic type `{ident}` not supported");
                                 None
                             }
                         }
@@ -98,7 +98,7 @@ impl TypeRepr {
                 }
             }
             other => {
-                eprintln!("type `{:?}` not supported", other);
+                eprintln!("    type `{:?}` not supported", other);
                 None
             }
         }
@@ -142,64 +142,18 @@ impl TypeRepr {
     }
 }
 
-pub fn collect_imports(file: &syn::File) -> Vec<String> {
-    let mut imports = Vec::new();
-    for item in &file.items {
-        if let syn::Item::Use(use_item) = item {
-            collect_use_tree(&use_item.tree, String::new(), &mut imports);
-        }
-    }
-
-    imports
-}
-
-fn collect_use_tree(tree: &syn::UseTree, prefix: String, imports: &mut Vec<String>) {
-    match tree {
-        syn::UseTree::Path(path) => {
-            let new_prefix = if prefix.is_empty() {
-                path.ident.to_string()
-            } else {
-                format!("{}::{}", prefix, path.ident)
-            };
-
-            collect_use_tree(&path.tree, new_prefix, imports);
-        }
-
-        syn::UseTree::Name(name) => {
-            let full = format!("{}::{}", prefix, name.ident);
-            if !imports.contains(&full) {
-                imports.push(full);
-            }
-        }
-
-        syn::UseTree::Rename(rename) => {
-            let full = format!("{}::{}", prefix, rename.ident);
-            if !imports.contains(&full) {
-                imports.push(full);
-            }
-        }
-
-        syn::UseTree::Group(group) => {
-            for item in &group.items {
-                collect_use_tree(item, prefix.clone(), imports);
-            }
-        }
-
-        syn::UseTree::Glob(_) => {
-            // use foo::*;
-        }
-    }
-}
-
 pub struct RsTsVisitor {
     app_handle_vars: HashSet<String>,
     vars: HashMap<String, TypeRepr>,
 
     crate_name: String,
+
     file: PathBuf,
     syn_file: syn::File,
     base_dir: PathBuf,
-    imports : Vec<String>,
+
+    imports : HashSet<String>,
+    crate_hier: String,
 
     pub events: Vec<EventDefinition>,
     pub commands: Vec<CommandDefinition>,
@@ -242,7 +196,8 @@ impl RsTsVisitor {
             syn_file: file.1.clone(),
             commands: Vec::new(),
             structs: Vec::new(),
-            imports:collect_imports(&file.1)
+            imports:HashSet::new(),
+            crate_hier: String::new()
         }
     }
 
@@ -285,101 +240,40 @@ impl RsTsVisitor {
             None
         }
     }
-
-    fn has_tauri_command_attr(attrs: &[syn::Attribute]) -> bool {
-        attrs.iter().any(|attr| {
-            let path = attr.path();
-            path.segments.len() == 2
-                && path.segments[0].ident == "tauri"
-                && path.segments[1].ident == "command"
-        })
-    }
-
-    fn is_type_excluded(ty: &syn::Type) -> bool {
-        quote::quote!(#ty).to_string().contains("AppHandle")
-    }
 }
 
 impl<'ast> Visit<'ast> for RsTsVisitor {
     fn visit_item_struct(&mut self, struct_def: &'ast syn::ItemStruct) {
-        let name = struct_def.ident.to_string();
-        let mut fields = HashMap::new();
-        let location = format!(
-            "Definition: {}:{}",
-            self.file
-                .display()
-                .to_string()
-                .replace(&self.base_dir.display().to_string(), ""),
-            struct_def.struct_token.span().start().line
-        );
-        for field in &struct_def.fields {
-            if let Some(type_rep) = TypeRepr::from_syn_type(&self.crate_name, &field.ty) {
-                fields
-                    .entry(field.ident.as_ref().unwrap().to_string())
-                    .or_insert(type_rep);
-            }
-        }
-        self.structs.push(StructDefinition {
-            name,
-            fields,
-            location,
-            file: self.file.clone(),
-            syn_file: self.syn_file.clone(),
-            crate_name: self.crate_name.clone(),
-            imports: self.imports.clone()
-        });
+        self.structs.push(StructDefinition::from_item_struct(struct_def, &self.base_dir, &self.file, &self.syn_file, &self.crate_name, &self.imports));
     }
 
     fn visit_item_fn(&mut self, fn_def: &'ast syn::ItemFn) {
-        if Self::has_tauri_command_attr(&fn_def.attrs) {
-            let name = fn_def.sig.ident.to_string();
-
-            let mut param_names = Vec::new();
-            let mut params = HashMap::new();
-            for input in &fn_def.sig.inputs {
-                if let syn::FnArg::Typed(pat_type) = input
-                    && let syn::Pat::Ident(id) = pat_type.pat.as_ref()
-                    && !Self::is_type_excluded(&pat_type.ty)
-                {
-                    let name = id.ident.to_string();
-                    param_names.push(name.clone());
-                    if let Some(par_ty) = TypeRepr::from_syn_type("", &pat_type.ty) {
-                        params.entry(name).or_insert(par_ty);
-                    }
-                }
-            }
-
-            let mut ret_type = None;
-            if let syn::ReturnType::Type(_, ty) = &fn_def.sig.output
-                && let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref())
-            {
-                ret_type = Some(ret_typ);
-            }
-            let location = format!(
-                "Definition: {}:{}",
-                self.file
-                    .display()
-                    .to_string()
-                    .replace(&self.base_dir.display().to_string(), ""),
-                fn_def.sig.span().start().line
-            );
-
-            self.commands.push(CommandDefinition {
-                name,
-                ret_type,
-                params,
-                param_names,
-                file: self.file.clone(),
-                syn_file: self.syn_file.clone(),
-                location,
-                imports:collect_imports(&self.syn_file)
-            });
+        if let Some(cmd) = CommandDefinition::from_item_fn(fn_def, &self.imports, &self.base_dir, &self.file, &self.syn_file){
+            self.commands.push(cmd);
         }
-
         syn::visit::visit_item_fn(self, fn_def);
     }
+    
+    fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
+        if let Some(event )=EventDefinition::from_expr_method_call(node, &self.app_handle_vars, &self.vars, &self.imports, &self.file, &self.syn_file){
+            self.events.push(event);
+        }
+        syn::visit::visit_expr_method_call(self, node);
+    }
 
-    // Detecta parámetros de función: fn foo(app: AppHandle, ...)
+    fn visit_use_path(&mut self, path: &'ast syn::UsePath) {
+        let prev = self.crate_hier.clone();
+        self.crate_hier = format!("{}::{}",self.crate_hier,path.ident.to_string());
+        syn::visit::visit_use_path(self, path);
+        self.crate_hier = prev;
+    }
+    
+    fn visit_use_name(&mut self, name: &'ast syn::UseName) {
+        let full = format!("{}::{}", self.crate_hier, name.ident);
+        syn::visit::visit_use_name(self, name);
+        self.imports.insert(full.strip_prefix("::").unwrap().to_string());
+    }
+
     fn visit_fn_arg(&mut self, node: &'ast FnArg) {
         if let FnArg::Typed(pat_type) = node
             && let Some(name) = Self::extract_pat_ident(&pat_type.pat)
@@ -395,10 +289,8 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
         syn::visit::visit_fn_arg(self, node);
     }
 
-    // Detecta declaraciones locales con y sin tipo explícito
     fn visit_local(&mut self, node: &'ast Local) {
         match &node.pat {
-            // con tipo explícito: let app: AppHandle = ...
             Pat::Type(PatType { ty, pat, .. }) => {
                 if let Some(name) = Self::extract_pat_ident(pat) {
                     if Self::is_app_type(ty) {
@@ -410,16 +302,13 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
                     }
                 }
             }
-            // sin tipo explícito: let handle2 = handle1 o let x = expr
             Pat::Ident(pat_ident) => {
                 let name = pat_ident.ident.to_string();
                 if let Some(init) = &node.init {
                     let init_repr = init.expr.to_token_stream().to_string();
-                    // propagar AppHandle: let handle2 = handle1
                     if self.app_handle_vars.contains(&init_repr) {
                         self.app_handle_vars.insert(name);
                     }
-                    // para otros tipos sin anotación no hay TypeRepr que inferir
                 }
             }
             _ => {}
@@ -427,7 +316,6 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
         syn::visit::visit_local(self, node);
     }
 
-    // Parámetros de closure: |app: &mut tauri::App| { ... }
     fn visit_expr_closure(&mut self, node: &'ast ExprClosure) {
         for input in &node.inputs {
             if let Pat::Type(PatType { ty, pat, .. }) = input
@@ -438,60 +326,5 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
             }
         }
         syn::visit::visit_expr_closure(self, node);
-    }
-
-    // Detecta llamadas a .emit*()
-    fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
-        if node.method.to_string().starts_with("emit") {
-            let receiver = node.receiver.to_token_stream().to_string();
-            if self.app_handle_vars.contains(&receiver) {
-                let args: Vec<String> = node
-                    .args
-                    .iter()
-                    .map(|arg| arg.to_token_stream().to_string().replace("\"", ""))
-                    .collect();
-
-                match node.method.to_string().as_str() {
-                    "emit" => {
-                        self.events.push(EventDefinition {
-                            name: args.first().unwrap().replace('"', ""),
-                            ty: self.vars[args.get(1).unwrap()].clone(),
-                            file: self.file.clone(),
-                            syn_file: self.syn_file.clone(),
-                            imports:collect_imports(&self.syn_file)
-                        });
-                    }
-                    "emit_to" => {
-                        self.events.push(EventDefinition {
-                            name: args.get(1).unwrap().replace('"', ""),
-                            ty: self.vars[args.get(2).unwrap()].clone(),
-                            file: self.file.clone(),
-                            syn_file: self.syn_file.clone(),
-                            imports:collect_imports(&self.syn_file)
-                        });
-                    }
-                    "emit_str" => {
-                        self.events.push(EventDefinition {
-                            name: args.first().unwrap().replace('"', ""),
-                            ty: TypeRepr::Simple("".to_string(), "String".to_string()),
-                            file: self.file.clone(),
-                            syn_file: self.syn_file.clone(),
-                            imports:collect_imports(&self.syn_file)
-                        });
-                    }
-                    "emit_str_to" => {
-                        self.events.push(EventDefinition {
-                            name: args.get(1).unwrap().replace('"', ""),
-                            ty: TypeRepr::Simple("".to_string(), "String".to_string()),
-                            file: self.file.clone(),
-                            syn_file: self.syn_file.clone(),
-                            imports:collect_imports(&self.syn_file)
-                        });
-                    }
-                    _ => (),
-                };
-            }
-        }
-        syn::visit::visit_expr_method_call(self, node);
     }
 }

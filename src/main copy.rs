@@ -73,7 +73,7 @@ fn main() {
 
         let json = String::from_utf8(body).unwrap();
 
-        println!("Mensaje recibido:");
-        println!("{json}");
+        println!("  Mensaje recibido:");
+        println!("  {json}");
     }
 }

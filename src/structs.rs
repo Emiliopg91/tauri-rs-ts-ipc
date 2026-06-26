@@ -1,9 +1,11 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     hash::Hash,
     path::{Path, PathBuf},
 };
+
+use syn::spanned::Spanned;
 
 use crate::commons::{standard_type_assoc, TypeRepr};
 
@@ -15,7 +17,7 @@ pub struct StructDefinition {
     pub file: PathBuf,
     pub syn_file: syn::File,
     pub crate_name: String,
-    pub imports: Vec<String>,
+    pub imports: HashSet<String>,
 }
 
 impl Eq for StructDefinition {}
@@ -100,5 +102,40 @@ impl StructDefinition {
         }
 
         fs::write(&file, content).unwrap();
+    }
+
+    pub fn from_item_struct(
+        struct_def: &syn::ItemStruct,
+        base_dir: &PathBuf,
+        file: &PathBuf,
+        syn_file: &syn::File,
+        crate_name: &str,
+        imports: &HashSet<String>,
+    ) -> Self {
+        let name = struct_def.ident.to_string();
+        let mut fields = HashMap::new();
+        let location = format!(
+            "Definition: {}:{}",
+            file.display()
+                .to_string()
+                .replace(&base_dir.display().to_string(), ""),
+            struct_def.struct_token.span().start().line
+        );
+        for field in &struct_def.fields {
+            if let Some(type_rep) = TypeRepr::from_syn_type(&crate_name, &field.ty) {
+                fields
+                    .entry(field.ident.as_ref().unwrap().to_string())
+                    .or_insert(type_rep);
+            }
+        }
+        StructDefinition {
+            name,
+            fields,
+            location,
+            file: file.clone(),
+            syn_file: syn_file.clone(),
+            crate_name: crate_name.to_string(),
+            imports: imports.clone(),
+        }
     }
 }

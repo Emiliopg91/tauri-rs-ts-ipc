@@ -4,6 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use syn::spanned::Spanned;
+
 use crate::commons::{TypeRepr,  standard_type_assoc};
 
 #[derive(Debug, Clone)]
@@ -15,7 +17,7 @@ pub struct CommandDefinition {
     pub location: String,
     pub file: PathBuf,
     pub syn_file: syn::File,
-    pub imports: Vec<String>
+    pub imports: HashSet<String>
 }
 
 impl CommandDefinition {
@@ -142,4 +144,73 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
 
         fs::write(&file, content).unwrap();
     }
+
+    fn has_tauri_command_attr(attrs: &[syn::Attribute]) -> bool {
+        attrs.iter().any(|attr| {
+            let path = attr.path();
+            path.segments.len() == 2
+                && path.segments[0].ident == "tauri"
+                && path.segments[1].ident == "command"
+        })
+    }
+
+    fn is_type_excluded(ty: &syn::Type) -> bool {
+        for ity in &["AppHandle", "State", "Channel"]{
+            if quote::quote!(#ty).to_string() == ity.to_string() ||  quote::quote!(#ty).to_string().ends_with(&format!("::{}", ity)){
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn from_item_fn(fn_def: &syn::ItemFn,imports : &HashSet<String>, base_dir: &PathBuf, file: &PathBuf, syn_file: &syn::File)-> Option<Self>{
+        if Self::has_tauri_command_attr(&fn_def.attrs) {
+            let name = fn_def.sig.ident.to_string();
+
+            let mut param_names = Vec::new();
+            let mut params = HashMap::new();
+            for input in &fn_def.sig.inputs {
+                if let syn::FnArg::Typed(pat_type) = input
+                    && let syn::Pat::Ident(id) = pat_type.pat.as_ref()
+                    && !Self::is_type_excluded(&pat_type.ty)
+                {
+                    let name = id.ident.to_string();
+                    param_names.push(name.clone());
+                    if let Some(par_ty) = TypeRepr::from_syn_type("", &pat_type.ty) {
+                        params.entry(name).or_insert(par_ty);
+                    }
+                }
+            }
+
+            let mut ret_type = None;
+            if let syn::ReturnType::Type(_, ty) = &fn_def.sig.output
+                && let Some(ret_typ) = TypeRepr::from_syn_type("", ty.as_ref())
+            {
+                ret_type = Some(ret_typ);
+            }
+            let location = format!(
+                "Definition: {}:{}",
+                file
+                    .display()
+                    .to_string()
+                    .replace(&base_dir.display().to_string(), ""),
+                fn_def.sig.span().start().line
+            );
+
+            Some(CommandDefinition {
+                name,
+                ret_type,
+                params,
+                param_names,
+                file: file.clone(),
+                syn_file: syn_file.clone(),
+                location,
+                imports:imports.clone()
+            })
+        } else {
+            None
+        }
+    }
+    
 }

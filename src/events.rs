@@ -1,8 +1,11 @@
 use std::{
-    collections::HashSet,
+    collections::{HashSet, HashMap},
     fs,
     path::{Path, PathBuf},
 };
+
+use quote::ToTokens;
+use syn::ExprMethodCall;
 
 use crate::commons::{TypeRepr, standard_type_assoc};
 
@@ -12,7 +15,7 @@ pub struct EventDefinition {
     pub ty: TypeRepr,
     pub file: PathBuf,
     pub syn_file: syn::File,
-    pub imports: Vec<String>
+    pub imports: HashSet<String>
 }
 
 impl EventDefinition {
@@ -116,5 +119,64 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
         content.push('}');
 
         fs::write(&file, content).unwrap();
+    }
+
+    pub fn from_expr_method_call(node: &ExprMethodCall, app_handle_vars: &HashSet<String>, vars:& HashMap<String, TypeRepr>,imports : &HashSet<String>,file :&PathBuf, syn_file: &syn::File) -> Option<Self> {
+        if node.method.to_string().starts_with("emit") {
+            let receiver = node.receiver.to_token_stream().to_string();
+            if app_handle_vars.contains(&receiver) {
+                let args: Vec<String> = node
+                    .args
+                    .iter()
+                    .map(|arg| arg.to_token_stream().to_string().replace("\"", ""))
+                    .collect();
+
+                match node.method.to_string().as_str() {
+                    "emit" => {
+                        Some(EventDefinition {
+                            name: args.first().unwrap().replace('"', ""),
+                            ty: vars[args.get(1).unwrap()].clone(),
+                            file: file.clone(),
+                            syn_file: syn_file.clone(),
+                            imports:imports.clone()
+                        })
+                    }
+                    "emit_to" => {
+                        Some(EventDefinition {
+                            name: args.get(1).unwrap().replace('"', ""),
+                            ty: vars[args.get(2).unwrap()].clone(),
+                            file: file.clone(),
+                            syn_file: syn_file.clone(),
+                            imports:imports.clone()
+                            
+                        })
+                    }
+                    "emit_str" => {
+                        Some(EventDefinition {
+                            name: args.first().unwrap().replace('"', ""),
+                            ty: TypeRepr::Simple("".to_string(), "String".to_string()),
+                            file: file.clone(),
+                            syn_file: syn_file.clone(),
+                            imports:imports.clone()
+                            
+                        })
+                    }
+                    "emit_str_to" => {
+                        Some(EventDefinition {
+                            name: args.get(1).unwrap().replace('"', ""),
+                            ty: TypeRepr::Simple("".to_string(), "String".to_string()),
+                            file: file.clone(),
+                            syn_file: syn_file.clone(),
+                            imports:imports.clone()
+                        })
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
