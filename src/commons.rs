@@ -3,7 +3,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use itertools::Itertools;
 use quote::ToTokens;
 use syn::{ExprClosure, ExprMethodCall, FnArg, Local, Pat, PatType, Type, visit::Visit};
 
