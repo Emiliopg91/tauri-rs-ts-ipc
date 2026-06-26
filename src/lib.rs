@@ -53,7 +53,6 @@ pub fn inner_build(
     println!("    Found {} files", files.len());
     let mut outdated = true;
 
-    #[cfg(not(debug_assertions))]
     if let Ok(exists) = fs::exists(client_path)
         && exists
         && let Ok(metadata) = fs::metadata(client_path)
