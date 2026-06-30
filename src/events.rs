@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashSet, HashMap},
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -15,14 +15,18 @@ pub struct EventDefinition {
     pub ty: TypeRepr,
     pub file: PathBuf,
     pub syn_file: syn::File,
-    pub imports: HashSet<String>
+    pub imports: HashSet<String>,
 }
 
 impl EventDefinition {
     pub fn get_inner_leafs(&self) -> Vec<String> {
         let mut res = Vec::new();
         for ty in self.ty.inner_leaf_types() {
-            let path = self.imports.iter().find(|i| i.ends_with(&ty)).unwrap_or(&ty);
+            let path = self
+                .imports
+                .iter()
+                .find(|i| i.ends_with(&ty))
+                .unwrap_or(&ty);
             res.push(path.clone());
         }
 
@@ -86,7 +90,9 @@ impl EventDefinition {
                 }
             }
         }
-        let struct_names = struct_names.iter().cloned().collect::<Vec<_>>().join(", ");
+        let mut struct_names = struct_names.iter().cloned().collect::<Vec<_>>();
+        struct_names.sort();
+        let struct_names = struct_names.join(", ");
 
         let mut content = String::new();
         content.push_str(
@@ -121,7 +127,14 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
         fs::write(&file, content).unwrap();
     }
 
-    pub fn from_expr_method_call(node: &ExprMethodCall, app_handle_vars: &HashSet<String>, vars:& HashMap<String, TypeRepr>,imports : &HashSet<String>,file :&PathBuf, syn_file: &syn::File) -> Option<Self> {
+    pub fn from_expr_method_call(
+        node: &ExprMethodCall,
+        app_handle_vars: &HashSet<String>,
+        vars: &HashMap<String, TypeRepr>,
+        imports: &HashSet<String>,
+        file: &PathBuf,
+        syn_file: &syn::File,
+    ) -> Option<Self> {
         if node.method.to_string().starts_with("emit") {
             let receiver = node.receiver.to_token_stream().to_string();
             if app_handle_vars.contains(&receiver) {
@@ -132,44 +145,34 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
                     .collect();
 
                 match node.method.to_string().as_str() {
-                    "emit" => {
-                        Some(EventDefinition {
-                            name: args.first().unwrap().replace('"', ""),
-                            ty: vars[args.get(1).unwrap()].clone(),
-                            file: file.clone(),
-                            syn_file: syn_file.clone(),
-                            imports:imports.clone()
-                        })
-                    }
-                    "emit_to" => {
-                        Some(EventDefinition {
-                            name: args.get(1).unwrap().replace('"', ""),
-                            ty: vars[args.get(2).unwrap()].clone(),
-                            file: file.clone(),
-                            syn_file: syn_file.clone(),
-                            imports:imports.clone()
-                            
-                        })
-                    }
-                    "emit_str" => {
-                        Some(EventDefinition {
-                            name: args.first().unwrap().replace('"', ""),
-                            ty: TypeRepr::Simple("".to_string(), "String".to_string()),
-                            file: file.clone(),
-                            syn_file: syn_file.clone(),
-                            imports:imports.clone()
-                            
-                        })
-                    }
-                    "emit_str_to" => {
-                        Some(EventDefinition {
-                            name: args.get(1).unwrap().replace('"', ""),
-                            ty: TypeRepr::Simple("".to_string(), "String".to_string()),
-                            file: file.clone(),
-                            syn_file: syn_file.clone(),
-                            imports:imports.clone()
-                        })
-                    }
+                    "emit" => Some(EventDefinition {
+                        name: args.first().unwrap().replace('"', ""),
+                        ty: vars[args.get(1).unwrap()].clone(),
+                        file: file.clone(),
+                        syn_file: syn_file.clone(),
+                        imports: imports.clone(),
+                    }),
+                    "emit_to" => Some(EventDefinition {
+                        name: args.get(1).unwrap().replace('"', ""),
+                        ty: vars[args.get(2).unwrap()].clone(),
+                        file: file.clone(),
+                        syn_file: syn_file.clone(),
+                        imports: imports.clone(),
+                    }),
+                    "emit_str" => Some(EventDefinition {
+                        name: args.first().unwrap().replace('"', ""),
+                        ty: TypeRepr::Simple("".to_string(), "String".to_string()),
+                        file: file.clone(),
+                        syn_file: syn_file.clone(),
+                        imports: imports.clone(),
+                    }),
+                    "emit_str_to" => Some(EventDefinition {
+                        name: args.get(1).unwrap().replace('"', ""),
+                        ty: TypeRepr::Simple("".to_string(), "String".to_string()),
+                        file: file.clone(),
+                        syn_file: syn_file.clone(),
+                        imports: imports.clone(),
+                    }),
                     _ => None,
                 }
             } else {

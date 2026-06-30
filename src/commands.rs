@@ -6,7 +6,7 @@ use std::{
 
 use syn::spanned::Spanned;
 
-use crate::commons::{TypeRepr,  standard_type_assoc};
+use crate::commons::{TypeRepr, standard_type_assoc};
 
 #[derive(Debug, Clone)]
 pub struct CommandDefinition {
@@ -17,7 +17,7 @@ pub struct CommandDefinition {
     pub location: String,
     pub file: PathBuf,
     pub syn_file: syn::File,
-    pub imports: HashSet<String>
+    pub imports: HashSet<String>,
 }
 
 impl CommandDefinition {
@@ -33,7 +33,11 @@ impl CommandDefinition {
         let mut res = Vec::new();
         for ty in types {
             for ty2 in ty.inner_leaf_types() {
-                let path = self.imports.iter().find(|i| i.ends_with(&ty2)).unwrap_or(&ty2);
+                let path = self
+                    .imports
+                    .iter()
+                    .find(|i| i.ends_with(&ty2))
+                    .unwrap_or(&ty2);
                 res.push(path.clone());
             }
         }
@@ -100,7 +104,7 @@ impl CommandDefinition {
         res
     }
 
-    pub fn generate_file<T>(file: T, commands:& Vec<CommandDefinition>)
+    pub fn generate_file<T>(file: T, commands: &Vec<CommandDefinition>)
     where
         T: AsRef<Path>,
     {
@@ -118,7 +122,9 @@ impl CommandDefinition {
                 }
             }
         }
-        let struct_names = struct_names.iter().cloned().collect::<Vec<_>>().join(", ");
+        let mut struct_names = struct_names.iter().cloned().collect::<Vec<_>>();
+        struct_names.sort();
+        let struct_names = struct_names.join(", ");
 
         let mut content = String::new();
         content.push_str(
@@ -155,8 +161,12 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
     }
 
     fn is_type_excluded(ty: &syn::Type) -> bool {
-        for ity in &["AppHandle", "State", "Channel"]{
-            if quote::quote!(#ty).to_string() == *ity ||  quote::quote!(#ty).to_string().ends_with(&format!("::{}", ity)){
+        for ity in &["AppHandle", "State", "Channel"] {
+            if quote::quote!(#ty).to_string() == *ity
+                || quote::quote!(#ty)
+                    .to_string()
+                    .ends_with(&format!("::{}", ity))
+            {
                 return true;
             }
         }
@@ -164,7 +174,13 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
         false
     }
 
-    pub fn from_item_fn(fn_def: &syn::ItemFn,imports : &HashSet<String>, base_dir: &PathBuf, file: &PathBuf, syn_file: &syn::File)-> Option<Self>{
+    pub fn from_item_fn(
+        fn_def: &syn::ItemFn,
+        imports: &HashSet<String>,
+        base_dir: &PathBuf,
+        file: &PathBuf,
+        syn_file: &syn::File,
+    ) -> Option<Self> {
         if Self::has_tauri_command_attr(&fn_def.attrs) {
             let name = fn_def.sig.ident.to_string();
 
@@ -191,8 +207,7 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
             }
             let location = format!(
                 "Definition: {}:{}",
-                file
-                    .display()
+                file.display()
                     .to_string()
                     .replace(&base_dir.display().to_string(), ""),
                 fn_def.sig.span().start().line
@@ -206,11 +221,10 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
                 file: file.clone(),
                 syn_file: syn_file.clone(),
                 location,
-                imports:imports.clone()
+                imports: imports.clone(),
             })
         } else {
             None
         }
     }
-    
 }
