@@ -1,7 +1,7 @@
 [package]
 name = "tauri-rs-ts-ipc"
 description = "Build dependency for automated generation of Rust bridges for TypeScript"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
