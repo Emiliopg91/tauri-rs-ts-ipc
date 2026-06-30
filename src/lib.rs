@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod commons;
+pub mod enums;
 pub mod events;
 pub mod structs;
 
@@ -14,8 +15,8 @@ use std::{
 use syn::visit::Visit;
 
 use crate::{
-    commands::CommandDefinition, commons::RsTsVisitor, events::EventDefinition,
-    structs::StructDefinition,
+    commands::CommandDefinition, commons::RsTsVisitor, enums::EnumDefinition,
+    events::EventDefinition, structs::StructDefinition,
 };
 
 pub fn build() {
@@ -68,6 +69,7 @@ pub fn inner_build(
         let mut commands = Vec::new();
         let mut events = Vec::new();
         let mut used_structs = Vec::new();
+        let mut used_enums = Vec::new();
 
         inspect_code(
             src_tauri_path,
@@ -75,6 +77,7 @@ pub fn inner_build(
             &mut commands,
             &mut events,
             &mut used_structs,
+            &mut used_enums,
         );
 
         generate_files(
@@ -86,6 +89,7 @@ pub fn inner_build(
             &mut commands,
             &mut events,
             &mut used_structs,
+            &mut used_enums,
         );
     }
 
@@ -139,6 +143,7 @@ fn generate_files(
     commands: &mut Vec<CommandDefinition>,
     events: &mut Vec<EventDefinition>,
     used_structs: &mut Vec<StructDefinition>,
+    used_enums: &mut Vec<EnumDefinition>,
 ) {
     if !fs::exists(backend_dir).unwrap() {
         fs::create_dir_all(backend_dir).unwrap();
@@ -153,6 +158,8 @@ fn generate_files(
     );
     used_structs.sort_by_key(|e| e.name.clone());
     StructDefinition::generate_file(models_path, used_structs);
+    used_enums.sort_by_key(|e| e.name.clone());
+    EnumDefinition::generate_file(models_path, used_enums);
     println!("    Done");
 
     println!(
@@ -184,9 +191,11 @@ fn inspect_code(
     commands: &mut Vec<CommandDefinition>,
     events: &mut Vec<EventDefinition>,
     used_structs: &mut Vec<StructDefinition>,
+    used_enums: &mut Vec<EnumDefinition>,
 ) {
     let mut structs = HashSet::new();
-    let mut inner_used_structs = HashSet::new();
+    let mut enums = HashSet::new();
+    let mut inner_used_types = HashSet::new();
 
     println!("  Inspecting source code...");
     for file in &files {
@@ -198,7 +207,7 @@ fn inspect_code(
                 .iter()
                 .filter(|s| s.starts_with("crate::"))
                 .for_each(|s| {
-                    inner_used_structs.insert(s.clone());
+                    inner_used_types.insert(s.clone());
                 });
             commands.push(cmd.clone());
         }
@@ -209,9 +218,13 @@ fn inspect_code(
                 .iter()
                 .filter(|s| s.starts_with("crate::"))
                 .for_each(|s| {
-                    inner_used_structs.insert(s.clone());
+                    inner_used_types.insert(s.clone());
                 });
             events.push(event.clone());
+        }
+
+        for enum_d in &finder.enums {
+            enums.insert(enum_d.clone());
         }
 
         for struct_d in &finder.structs {
@@ -220,13 +233,13 @@ fn inspect_code(
                 .iter()
                 .filter(|s| s.starts_with("crate::"))
                 .for_each(|s| {
-                    inner_used_structs.insert(s.clone());
+                    inner_used_types.insert(s.clone());
                 });
             structs.insert(struct_d.clone());
         }
     }
 
-    inner_used_structs
+    inner_used_types
         .iter()
         .filter_map(|f| {
             for struct_d in &structs {
@@ -238,7 +251,20 @@ fn inspect_code(
         })
         .for_each(|e| used_structs.push(e));
 
+    inner_used_types
+        .iter()
+        .filter_map(|f| {
+            for enum_d in &enums {
+                if enum_d.get_full_qualified_name() == *f {
+                    return Some(enum_d.clone());
+                }
+            }
+            None
+        })
+        .for_each(|e| used_enums.push(e));
+
     println!("    Found {} commands", commands.len());
     println!("    Found {} events", events.len());
+    println!("    Found {} enums", used_enums.len());
     println!("    Found {} structs", used_structs.len());
 }

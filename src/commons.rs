@@ -6,7 +6,10 @@ use std::{
 use quote::ToTokens;
 use syn::{ExprClosure, ExprMethodCall, FnArg, Local, Pat, PatType, Type, visit::Visit};
 
-use crate::{commands::CommandDefinition, events::EventDefinition, structs::StructDefinition};
+use crate::{
+    commands::CommandDefinition, enums::EnumDefinition, events::EventDefinition,
+    structs::StructDefinition,
+};
 
 pub fn standard_type_assoc(name: &str) -> Option<&'static str> {
     Some(match name {
@@ -176,6 +179,7 @@ pub struct RsTsVisitor {
     pub events: Vec<EventDefinition>,
     pub commands: Vec<CommandDefinition>,
     pub structs: Vec<StructDefinition>,
+    pub enums: Vec<EnumDefinition>,
 }
 
 impl RsTsVisitor {
@@ -214,6 +218,7 @@ impl RsTsVisitor {
             syn_file: file.1.clone(),
             commands: Vec::new(),
             structs: Vec::new(),
+            enums: Vec::new(),
             imports: HashSet::new(),
             crate_hier: String::new(),
         }
@@ -261,6 +266,18 @@ impl RsTsVisitor {
 }
 
 impl<'ast> Visit<'ast> for RsTsVisitor {
+    fn visit_item_enum(&mut self, item_enum: &'ast syn::ItemEnum) {
+        self.enums.push(EnumDefinition::from_item_struct(
+            item_enum,
+            &self.base_dir,
+            &self.file,
+            &self.syn_file,
+            &self.crate_name,
+            &self.imports,
+        ));
+        syn::visit::visit_item_enum(self, item_enum);
+    }
+
     fn visit_item_struct(&mut self, struct_def: &'ast syn::ItemStruct) {
         self.structs.push(StructDefinition::from_item_struct(
             struct_def,
