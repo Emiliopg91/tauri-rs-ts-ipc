@@ -15,8 +15,11 @@ use std::{
 use syn::visit::Visit;
 
 use crate::{
-    commands::CommandDefinition, commons::RsTsVisitor, enums::EnumDefinition,
-    events::EventDefinition, structs::StructDefinition,
+    commands::CommandDefinition,
+    commons::{RsTsVisitor, TsType},
+    enums::EnumDefinition,
+    events::EventDefinition,
+    structs::StructDefinition,
 };
 
 pub fn build() {
@@ -156,10 +159,18 @@ fn generate_files(
             .to_string()
             .replace(&project_dir.display().to_string(), "")[1..]
     );
-    used_structs.sort_by_key(|e| e.name.clone());
-    StructDefinition::generate_file(models_path, used_structs);
-    used_enums.sort_by_key(|e| e.name.clone());
-    EnumDefinition::generate_file(models_path, used_enums);
+    let mut all_types: Vec<Box<dyn TsType>> = Vec::new();
+
+    used_structs
+        .into_iter()
+        .for_each(|e| all_types.push(Box::new(e.clone())));
+    used_enums
+        .into_iter()
+        .for_each(|e| all_types.push(Box::new(e.clone())));
+
+    all_types.sort_by_key(|e| e.get_sort_key());
+
+    commons::generate_file(models_path, &all_types);
     println!("    Done");
 
     println!(

@@ -1,5 +1,8 @@
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
+    fmt::Debug,
+    fs,
     path::{Path, PathBuf},
     sync::{LazyLock, Mutex},
 };
@@ -396,4 +399,28 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
         }
         syn::visit::visit_expr_closure(self, node);
     }
+}
+
+pub trait TsType: Any + Debug {
+    fn get_sort_key(&self) -> String;
+    fn as_any(&self) -> &dyn Any;
+    fn to_typescript(&self) -> String;
+}
+
+pub fn generate_file<F>(file: F, structs: &Vec<Box<dyn TsType>>)
+where
+    F: AsRef<Path>,
+{
+    if fs::exists(&file).unwrap() {
+        fs::remove_file(&file).unwrap();
+    }
+
+    let mut content = String::new();
+    content.push_str("//Auto generated file, do not edit manually\n\n");
+    for struct_d in structs {
+        content.push_str(&struct_d.to_typescript());
+        content.push_str("\n\n");
+    }
+
+    fs::write(&file, content).unwrap();
 }

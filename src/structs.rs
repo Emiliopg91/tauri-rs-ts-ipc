@@ -1,13 +1,13 @@
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
-    fs,
     hash::Hash,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use syn::spanned::Spanned;
 
-use crate::commons::{standard_type_assoc, TypeRepr};
+use crate::commons::{TsType, TypeRepr, standard_type_assoc};
 
 #[derive(Debug, Clone)]
 pub struct StructDefinition {
@@ -32,6 +32,18 @@ impl Hash for StructDefinition {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.crate_name.hash(state);
+    }
+}
+
+impl TsType for StructDefinition {
+    fn get_sort_key(&self) -> String {
+        self.name.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn to_typescript(&self) -> String {
+        self.to_typescript()
     }
 }
 
@@ -87,23 +99,6 @@ impl StructDefinition {
         res
     }
 
-    pub fn generate_file<F>(file: F, structs: &Vec<StructDefinition>)
-    where
-        F: AsRef<Path>,
-    {
-        if fs::exists(&file).unwrap() {
-            fs::remove_file(&file).unwrap();
-        }
-
-        let mut content = String::new();
-        for struct_d in structs {
-            content.push_str(&struct_d.to_typescript());
-            content.push_str("\n\n");
-        }
-
-        fs::write(&file, content).unwrap();
-    }
-
     pub fn from_item_struct(
         struct_def: &syn::ItemStruct,
         base_dir: &PathBuf,
@@ -115,10 +110,21 @@ impl StructDefinition {
         let name = struct_def.ident.to_string();
         let mut fields = HashMap::new();
         let location = format!(
-            "Definition: {}:{}",
+            "From {}:{}",
             file.display()
                 .to_string()
-                .replace(&base_dir.display().to_string(), ""),
+                .replace(
+                    &base_dir
+                        .parent()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .display()
+                        .to_string(),
+                    ""
+                )
+                .strip_prefix("/")
+                .unwrap(),
             struct_def.struct_token.span().start().line
         );
         for field in &struct_def.fields {

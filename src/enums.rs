@@ -1,11 +1,8 @@
-use std::{
-    collections::HashSet,
-    fs,
-    hash::Hash,
-    path::{Path, PathBuf},
-};
+use std::{any::Any, collections::HashSet, hash::Hash, path::PathBuf};
 
 use syn::spanned::Spanned;
+
+use crate::commons::TsType;
 
 #[derive(Debug, Clone)]
 pub struct EnumDefinition {
@@ -33,6 +30,18 @@ impl Hash for EnumDefinition {
     }
 }
 
+impl TsType for EnumDefinition {
+    fn get_sort_key(&self) -> String {
+        self.name.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn to_typescript(&self) -> String {
+        self.to_typescript()
+    }
+}
+
 impl EnumDefinition {
     pub fn get_full_qualified_name(&self) -> String {
         format!("{}::{}", self.crate_name, self.name)
@@ -47,19 +56,6 @@ impl EnumDefinition {
         }
         code.push('}');
         code
-    }
-
-    pub fn generate_file<F>(file: F, enums: &Vec<EnumDefinition>)
-    where
-        F: AsRef<Path>,
-    {
-        let mut content = fs::read_to_string(&file).unwrap();
-        for enum_d in enums {
-            content.push_str(&enum_d.to_typescript());
-            content.push_str("\n\n");
-        }
-
-        fs::write(&file, content).unwrap();
     }
 
     pub fn from_item_struct(
@@ -78,10 +74,21 @@ impl EnumDefinition {
             .collect::<Vec<String>>();
 
         let location = format!(
-            "Definition: {}:{}",
+            "From {}:{}",
             file.display()
                 .to_string()
-                .replace(&base_dir.display().to_string(), ""),
+                .replace(
+                    &base_dir
+                        .parent()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .display()
+                        .to_string(),
+                    ""
+                )
+                .strip_prefix("/")
+                .unwrap(),
             item_enum.enum_token.span().start().line
         );
         EnumDefinition {

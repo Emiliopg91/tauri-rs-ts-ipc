@@ -211,10 +211,21 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
                 ret_type = Some(ret_typ);
             }
             let location = format!(
-                "Definition: {}:{}",
+                "From {}:{}",
                 file.display()
                     .to_string()
-                    .replace(&base_dir.display().to_string(), ""),
+                    .replace(
+                        &base_dir
+                            .parent()
+                            .unwrap()
+                            .parent()
+                            .unwrap()
+                            .display()
+                            .to_string(),
+                        ""
+                    )
+                    .strip_prefix("/")
+                    .unwrap(),
                 fn_def.sig.span().start().line
             );
 
