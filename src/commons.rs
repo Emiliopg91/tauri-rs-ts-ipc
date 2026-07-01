@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
+    sync::{LazyLock, Mutex},
 };
 
 use quote::ToTokens;
@@ -33,6 +34,9 @@ pub enum GenericWrapper {
     Result,
     Tuple,
 }
+
+static NOT_SUPPORTED_TYPES: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
 
 #[derive(Debug, Clone)]
 pub enum TypeRepr {
@@ -103,7 +107,9 @@ impl TypeRepr {
                                 types: inner_types,
                             }),
                             _ => {
-                                eprintln!("    generic type `{ident}` not supported");
+                                if NOT_SUPPORTED_TYPES.lock().unwrap().insert(ident.clone()) {
+                                    eprintln!("    ERROR: Generic type `{ident}` not supported");
+                                }
                                 None
                             }
                         }
@@ -111,8 +117,15 @@ impl TypeRepr {
                     _ => Some(TypeRepr::Simple(crate_name.to_string(), ident)),
                 }
             }
+            syn::Type::Infer(_) => None,
             other => {
-                eprintln!("    type `{:?}` not supported", other);
+                if NOT_SUPPORTED_TYPES
+                    .lock()
+                    .unwrap()
+                    .insert(other.to_token_stream().to_string())
+                {
+                    eprintln!("    ERROR: Type `{:?}` not supported", other);
+                }
                 None
             }
         }
