@@ -1,6 +1,6 @@
 use std::{
     any::Any,
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fmt::Debug,
     fs,
     path::{Path, PathBuf},
@@ -8,7 +8,7 @@ use std::{
 };
 
 use quote::ToTokens;
-use syn::{ExprClosure, ExprMethodCall, FnArg, Local, Pat, PatType, Type, visit::Visit};
+use syn::{ExprClosure, ExprMethodCall, FnArg, Local, Pat, PatType, visit::Visit};
 
 use crate::{
     commands::CommandDefinition, enums::EnumDefinition, events::EventDefinition,
@@ -51,6 +51,10 @@ pub enum TypeRepr {
 }
 
 impl TypeRepr {
+    pub fn from_type_str(crate_name: &str, ty: &str) -> Option<TypeRepr> {
+        let ty = syn::parse_str(ty).unwrap();
+        Self::from_syn_type(crate_name, &ty)
+    }
     pub fn from_syn_type(crate_name: &str, ty: &syn::Type) -> Option<TypeRepr> {
         match ty {
             syn::Type::Reference(r) => TypeRepr::from_syn_type(crate_name, &r.elem),
@@ -181,7 +185,6 @@ impl TypeRepr {
 
 pub struct RsTsVisitor {
     app_handle_vars: HashSet<String>,
-    vars: HashMap<String, TypeRepr>,
 
     crate_name: String,
 
@@ -227,7 +230,6 @@ impl RsTsVisitor {
         Self {
             crate_name,
             app_handle_vars: HashSet::new(),
-            vars: HashMap::new(),
             events: Vec::new(),
             base_dir: base_dir.as_ref().to_path_buf(),
             file: file.0.as_ref().to_path_buf(),
@@ -250,34 +252,6 @@ impl RsTsVisitor {
     fn is_app_type(ty: &syn::Type) -> bool {
         ty.to_token_stream().to_string().contains("AppHandle")
             || ty.to_token_stream().to_string().contains("App")
-    }
-
-    fn type_as_path_string(ty: &Type) -> Option<String> {
-        match ty {
-            Type::Path(type_path) => {
-                let s = type_path
-                    .path
-                    .segments
-                    .iter()
-                    .map(|seg| seg.ident.to_string())
-                    .collect::<Vec<_>>()
-                    .join("::");
-                Some(s)
-            }
-            _ => None,
-        }
-    }
-
-    fn get_type_repr(&self, ty_orig: &Type) -> Option<TypeRepr> {
-        if let Some(ty_str) = Self::type_as_path_string(ty_orig) {
-            if let Some(std) = standard_type_assoc(ty_str.split("::").last().unwrap()) {
-                Some(TypeRepr::Simple("".to_string(), std.to_string()))
-            } else {
-                TypeRepr::from_syn_type("", ty_orig)
-            }
-        } else {
-            None
-        }
     }
 }
 
@@ -322,7 +296,6 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
         if let Some(event) = EventDefinition::from_expr_method_call(
             node,
             &self.app_handle_vars,
-            &self.vars,
             &self.imports,
             &self.file,
             &self.syn_file,
@@ -352,10 +325,6 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
         {
             if Self::is_app_type(&pat_type.ty) {
                 self.app_handle_vars.insert(name);
-            } else if Self::type_as_path_string(&pat_type.ty).is_some()
-                && let Some(ty) = self.get_type_repr(&pat_type.ty)
-            {
-                self.vars.insert(name, ty);
             }
         }
         syn::visit::visit_fn_arg(self, node);
@@ -363,17 +332,6 @@ impl<'ast> Visit<'ast> for RsTsVisitor {
 
     fn visit_local(&mut self, node: &'ast Local) {
         match &node.pat {
-            Pat::Type(PatType { ty, pat, .. }) => {
-                if let Some(name) = Self::extract_pat_ident(pat) {
-                    if Self::is_app_type(ty) {
-                        self.app_handle_vars.insert(name);
-                    } else if Self::type_as_path_string(ty).is_some()
-                        && let Some(ty) = self.get_type_repr(ty)
-                    {
-                        self.vars.insert(name, ty);
-                    }
-                }
-            }
             Pat::Ident(pat_ident) => {
                 let name = pat_ident.ident.to_string();
                 if let Some(init) = &node.init {

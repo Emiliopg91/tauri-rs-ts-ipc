@@ -2,16 +2,18 @@ pub mod commands;
 pub mod commons;
 pub mod enums;
 pub mod events;
+pub mod rust_analyzer;
 pub mod structs;
 
+use rust_analyzer::RustAnalyzerClient;
 use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
     process::exit,
+    sync::{LazyLock, Mutex},
     time::{Instant, SystemTime},
 };
-
 use syn::visit::Visit;
 
 use crate::{
@@ -21,6 +23,9 @@ use crate::{
     events::EventDefinition,
     structs::StructDefinition,
 };
+
+pub static RA_CLIENT: LazyLock<Mutex<Option<RustAnalyzerClient>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 pub fn build() {
     let src_tauri_path_buf = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -49,9 +54,13 @@ pub fn inner_build(
     client_path: &PathBuf,
     listener_path: &PathBuf,
 ) {
+    std::env::set_current_dir(src_tauri_path.parent().unwrap()).unwrap();
     println!("------------- Rust <-> Typescript Generator -------------");
     let t0 = Instant::now();
-    println!("  Gathering source codes files...");
+    println!("  Initializing Rust Analyzer...");
+    initialize_rust_analyzer(src_tauri_path.parent().unwrap());
+    println!("    Finished in {:.3}", t0.elapsed().as_secs_f64());
+    println!("  Gathering source code files...");
     let mut files = Vec::new();
     let latest = find_rs_files(src_tauri_path, &mut files).unwrap();
     println!("    Found {} files", files.len());
@@ -98,6 +107,11 @@ pub fn inner_build(
 
     println!("  Finished after {:.3} seconds", t0.elapsed().as_secs_f64(),);
     println!("---------------------------------------------------------");
+}
+
+fn initialize_rust_analyzer(project_dir: &Path) {
+    let client = RustAnalyzerClient::start(project_dir).unwrap();
+    *RA_CLIENT.lock().unwrap() = Some(client);
 }
 
 fn find_rs_files<T>(
@@ -157,7 +171,8 @@ fn generate_files(
         &models_path
             .display()
             .to_string()
-            .replace(&project_dir.display().to_string(), "")[1..]
+            .replace(&project_dir.display().to_string(), "")
+            .replace("//", "/")
     );
     let mut all_types: Vec<Box<dyn TsType>> = Vec::new();
 
@@ -171,29 +186,28 @@ fn generate_files(
     all_types.sort_by_key(|e| e.get_sort_key());
 
     commons::generate_file(models_path, &all_types);
-    println!("    Done");
 
     println!(
         "  Generating client file in '{}'",
         &client_path
             .display()
             .to_string()
-            .replace(&project_dir.display().to_string(), "")[1..]
+            .replace(&project_dir.display().to_string(), "")
+            .replace("//", "/")
     );
     commands.sort_by_key(|e| e.name.clone());
     CommandDefinition::generate_file(client_path, commands);
-    println!("    Done");
 
     println!(
         "  Generating listener file in '{}'",
         &listener_path
             .display()
             .to_string()
-            .replace(&project_dir.display().to_string(), "")[1..]
+            .replace(&project_dir.display().to_string(), "")
+            .replace("//", "/")
     );
     events.sort_by_key(|e| e.name.clone());
     EventDefinition::generate_file(listener_path, events);
-    println!("    Done");
 }
 
 fn inspect_code(

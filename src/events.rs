@@ -1,13 +1,16 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
 };
 
 use quote::ToTokens;
-use syn::ExprMethodCall;
+use syn::{Expr, ExprMethodCall, spanned::Spanned};
 
-use crate::commons::{TypeRepr, standard_type_assoc};
+use crate::{
+    RA_CLIENT,
+    commons::{TypeRepr, standard_type_assoc},
+};
 
 #[derive(Debug, Clone)]
 pub struct EventDefinition {
@@ -127,10 +130,47 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
         fs::write(&file, content).unwrap();
     }
 
+    pub fn get_type_from_expr(expr: &Expr, file: &PathBuf) -> Option<TypeRepr> {
+        let start = expr.span().start();
+
+        match RA_CLIENT.lock().unwrap().as_mut().unwrap().type_at(
+            file,
+            start.line,
+            start.column + 1,
+        ) {
+            Ok(Some(t)) => TypeRepr::from_type_str("", t.type_string.unwrap().as_str()),
+            Ok(None) => {
+                dbg!(&file);
+                dbg!(&start);
+                None
+            }
+            Err(e) => {
+                dbg!(&file);
+                dbg!(&start);
+                dbg!(e);
+                None
+            }
+        }
+    }
+
+    pub fn get_offset(content: &str, line: usize, column: usize) -> usize {
+        let mut offset = 0;
+
+        for (idx, current_line) in content.lines().enumerate() {
+            if idx + 1 == line {
+                offset += column;
+                break;
+            }
+
+            offset += current_line.len() + 1;
+        }
+
+        offset
+    }
+
     pub fn from_expr_method_call(
         node: &ExprMethodCall,
         app_handle_vars: &HashSet<String>,
-        vars: &HashMap<String, TypeRepr>,
         imports: &HashSet<String>,
         file: &PathBuf,
         syn_file: &syn::File,
@@ -138,37 +178,47 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
         if node.method.to_string().starts_with("emit") {
             let receiver = node.receiver.to_token_stream().to_string();
             if app_handle_vars.contains(&receiver) {
-                let args: Vec<String> = node
+                let args_str: Vec<String> = node
                     .args
                     .iter()
                     .map(|arg| arg.to_token_stream().to_string().replace("\"", ""))
                     .collect();
 
+                let arg_expr: Vec<Expr> = node.args.iter().cloned().collect();
+
+                let payload_idx = if node.method.to_string().as_str().ends_with("_to") {
+                    2
+                } else {
+                    1
+                };
+                let ty =
+                    Self::get_type_from_expr(arg_expr.get(payload_idx).unwrap(), file).unwrap();
+
                 match node.method.to_string().as_str() {
                     "emit" => Some(EventDefinition {
-                        name: args.first().unwrap().replace('"', ""),
-                        ty: vars[args.get(1).unwrap()].clone(),
+                        name: args_str.first().unwrap().replace('"', ""),
+                        ty,
                         file: file.clone(),
                         syn_file: syn_file.clone(),
                         imports: imports.clone(),
                     }),
                     "emit_to" => Some(EventDefinition {
-                        name: args.get(1).unwrap().replace('"', ""),
-                        ty: vars[args.get(2).unwrap()].clone(),
+                        name: args_str.get(1).unwrap().replace('"', ""),
+                        ty,
                         file: file.clone(),
                         syn_file: syn_file.clone(),
                         imports: imports.clone(),
                     }),
                     "emit_str" => Some(EventDefinition {
-                        name: args.first().unwrap().replace('"', ""),
-                        ty: TypeRepr::Simple("".to_string(), "String".to_string()),
+                        name: args_str.first().unwrap().replace('"', ""),
+                        ty,
                         file: file.clone(),
                         syn_file: syn_file.clone(),
                         imports: imports.clone(),
                     }),
                     "emit_str_to" => Some(EventDefinition {
-                        name: args.get(1).unwrap().replace('"', ""),
-                        ty: TypeRepr::Simple("".to_string(), "String".to_string()),
+                        name: args_str.get(1).unwrap().replace('"', ""),
+                        ty,
                         file: file.clone(),
                         syn_file: syn_file.clone(),
                         imports: imports.clone(),
