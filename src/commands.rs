@@ -161,7 +161,7 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
     }
 
     fn is_type_excluded(ty: &syn::Type) -> bool {
-        for ity in &["AppHandle", "State", "Channel"] {
+        for ity in &["WebviewWindow", "AppHandle", "State", "Channel"] {
             if let syn::Type::Path(type_path) = ty {
                 if type_path
                     .path
