@@ -114,12 +114,24 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
             content.push_str("\n\n");
         }
         content.push_str(
-            "  private static inner_listen<R>(event_name: string, callback: (payload: R) => void ): () => void {
+            "
+  private static inner_listen<R>(
+    event_name: string,
+    callback: (payload: R) => void,
+  ): () => void {
+    console.debug(\"Listening to event '\" + event_name + \"'\");
     const unlisten = listen<R>(event_name, (event) => {
+      console.debug(
+        \"Received event for '\" + event_name + \"', payload: \",
+        event.payload,
+      );
       callback(event.payload);
     });
 
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      console.debug(\"Stopping listening to event '\"+event_name+\"'\");
+      unlisten.then((fn) => fn());
+    };
   }\n",
         );
         content.push('}');

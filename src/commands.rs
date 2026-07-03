@@ -18,6 +18,7 @@ pub struct CommandDefinition {
     pub file: PathBuf,
     pub syn_file: syn::File,
     pub imports: HashSet<String>,
+    pub dont_log: bool,
 }
 
 impl CommandDefinition {
@@ -136,14 +137,48 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
             "import {{ {} }} from \"./models\";\n\n",
             struct_names
         ));
-        content.push_str("export class BackendClient {\n");
+        content.push_str("export class BackendClient {\n\n");
+
+        let dont_log = commands
+            .iter()
+            .filter_map(|cmd| {
+                if cmd.dont_log {
+                    Some(format!("\"{}\"", cmd.name))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<String>>()
+            .join(", ");
+        content.push_str(&format!(
+            "    private static DONT_LOG_COMMANDS: string[] = [{}];\n\n",
+            dont_log
+        ));
+
         for cmd in commands {
             content.push_str(&format!("\t{}", &cmd.to_typescript().replace("\n", "\n\t")));
             content.push_str("\n\n");
         }
         content.push_str(
-            "	private static inner_invoke<R>(method: string, payload?: InvokeArgs): Promise<R> {
-		return invoke(method, payload);
+            "  
+	private static inner_invoke<R>(method: string, payload?: InvokeArgs): Promise<R> {
+		return new Promise<R>((resolve,reject)=>{
+			const do_log = !BackendClient.DONT_LOG_COMMANDS.includes(method);
+			if(do_log) {
+				console.debug(\"Invoking command '\"+method+\"', payload: \", payload);
+			}
+			invoke<R>(method, payload).then((response)=>{
+				if(do_log) {
+					console.debug(\"Finished command '\"+method+\"', response: \", response);
+				}
+				resolve(response);
+			}).catch((err) =>{
+				if(do_log) {
+					console.debug(\"Failed command '\"+method+\"', reason: \", err);
+				}
+				reject(err);
+			});
+		});
 	}\n",
         );
         content.push('}');
@@ -157,6 +192,26 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
             path.segments.len() == 2
                 && path.segments[0].ident == "tauri"
                 && path.segments[1].ident == "command"
+        })
+    }
+
+    fn has_dont_log_attr(attrs: &[syn::Attribute]) -> bool {
+        attrs.iter().any(|attr| {
+            if !attr.path().is_ident("doc") {
+                return false;
+            }
+            if let syn::Meta::NameValue(syn::MetaNameValue {
+                value:
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(s),
+                        ..
+                    }),
+                ..
+            }) = &attr.meta
+            {
+                return s.value().contains("@dont_log");
+            }
+            false
         })
     }
 
@@ -238,6 +293,7 @@ import { invoke, InvokeArgs } from \"@tauri-apps/api/core\";\n\n",
                 syn_file: syn_file.clone(),
                 location,
                 imports: imports.clone(),
+                dont_log: Self::has_dont_log_attr(&fn_def.attrs),
             })
         } else {
             None
