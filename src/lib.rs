@@ -221,8 +221,6 @@ fn inspect_code(
                     inner_used_types.insert(s.clone());
                 });
             commands.push(cmd.clone());
-            dbg!(&cmd.name);
-            dbg!(&cmd.dont_log);
         }
 
         for event in &finder.events {
