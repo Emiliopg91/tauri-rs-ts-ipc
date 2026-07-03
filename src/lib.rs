@@ -171,7 +171,6 @@ fn generate_files(
     all_types.sort_by_key(|e| e.get_sort_key());
 
     commons::generate_file(models_path, &all_types);
-    println!("    Done");
 
     println!(
         "  Generating client file in '{}'",
@@ -182,7 +181,6 @@ fn generate_files(
     );
     commands.sort_by_key(|e| e.name.clone());
     CommandDefinition::generate_file(client_path, commands);
-    println!("    Done");
 
     println!(
         "  Generating listener file in '{}'",
@@ -193,7 +191,6 @@ fn generate_files(
     );
     events.sort_by_key(|e| e.name.clone());
     EventDefinition::generate_file(listener_path, events);
-    println!("    Done");
 }
 
 fn inspect_code(
@@ -274,8 +271,12 @@ fn inspect_code(
         })
         .for_each(|e| used_enums.push(e));
 
-    println!("    Found {} commands", commands.len());
-    println!("    Found {} events", events.len());
-    println!("    Found {} enums", used_enums.len());
-    println!("    Found {} structs", used_structs.len());
+    println!("    Found:");
+    println!(
+        "      {} commands, {} events, {} enums and {} structs",
+        commands.len(),
+        events.len(),
+        used_enums.len(),
+        used_structs.len()
+    );
 }
