@@ -129,9 +129,11 @@ impl StructDefinition {
         );
         for field in &struct_def.fields {
             if let Some(type_rep) = TypeRepr::from_syn_type(crate_name, &field.ty) {
-                fields
-                    .entry(field.ident.as_ref().unwrap().to_string())
-                    .or_insert(type_rep);
+                if field.ident.is_some() {
+                    fields
+                        .entry(field.ident.as_ref().unwrap().to_string())
+                        .or_insert(type_rep);
+                }
             }
         }
         StructDefinition {

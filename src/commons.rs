@@ -33,13 +33,14 @@ pub fn standard_type_assoc(name: &str) -> Option<&'static str> {
 pub enum GenericWrapper {
     Vec,
     Map,
+    Set,
     Option,
     Result,
     Tuple,
 }
 
 static NOT_SUPPORTED_TYPES: LazyLock<Mutex<HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+    LazyLock::new(|| Mutex::new(["PhantomData"].into_iter().map(String::from).collect()));
 
 #[derive(Debug, Clone)]
 pub enum TypeRepr {
@@ -94,6 +95,8 @@ impl TypeRepr {
 
                         let wrapper = if ident == "Vec" {
                             Some(GenericWrapper::Vec)
+                        } else if ident.ends_with("Set") {
+                            Some(GenericWrapper::Map)
                         } else if ident.ends_with("Map") {
                             Some(GenericWrapper::Map)
                         } else if ident == "Option" {
@@ -147,6 +150,7 @@ impl TypeRepr {
                 let first = types[0].to_typescript();
                 match wrapper {
                     GenericWrapper::Vec => format!("{first}[]"),
+                    GenericWrapper::Set => format!("Set<{first}>"),
                     GenericWrapper::Option => format!("{first} | null"),
                     GenericWrapper::Map => {
                         let second = types[1].to_typescript();
