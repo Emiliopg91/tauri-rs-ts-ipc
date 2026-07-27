@@ -143,7 +143,9 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
         callback(event.payload);
     }).catch((err) => {
         console.error(\"Failed to listen to '\" + event_name + \"':\", err);
-        return () => {};
+        return () => {
+            //Do nothing
+        };
     });
 
     return () => {
