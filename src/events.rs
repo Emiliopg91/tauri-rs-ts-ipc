@@ -35,17 +35,32 @@ impl EventDefinition {
 
     fn to_typescript(&self) -> String {
         let mut res = String::new();
-        res.push_str(&format!(
-            "public static on{}(callback: (payload: {}) => void): () => void {{\n",
-            self.name_to_pascalcase(),
-            self.ty.to_typescript()
-        ));
+        match self.ty {
+            TypeRepr::Void => {
+                res.push_str(&format!(
+                    "public static on{}(callback: () => void): () => void {{\n",
+                    self.name_to_pascalcase(),
+                ));
 
-        res.push_str(&format!(
-            "  return BackendListener.inner_listen<{}>(\"{}\", callback);\n",
-            self.ty.to_typescript(),
-            self.name
-        ));
+                res.push_str(&format!(
+                    "  return BackendListener.inner_listen<undefined>(\"{}\", callback);\n",
+                    self.name
+                ));
+            }
+            _ => {
+                res.push_str(&format!(
+                    "public static on{}(callback: (payload: {}) => void): () => void {{\n",
+                    self.name_to_pascalcase(),
+                    self.ty.to_typescript()
+                ));
+
+                res.push_str(&format!(
+                    "  return BackendListener.inner_listen<{}>(\"{}\", callback);\n",
+                    self.ty.to_typescript(),
+                    self.name
+                ));
+            }
+        }
 
         res.push('}');
 
@@ -157,20 +172,34 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
                     .collect();
 
                 match node.method.to_string().as_str() {
-                    "emit" => Some(EventDefinition {
-                        name: args.first().unwrap().replace('"', ""),
-                        ty: vars[args.get(1).unwrap()].clone(),
-                        file: file.clone(),
-                        syn_file: syn_file.clone(),
-                        imports: imports.clone(),
-                    }),
-                    "emit_to" => Some(EventDefinition {
-                        name: args.get(1).unwrap().replace('"', ""),
-                        ty: vars[args.get(2).unwrap()].clone(),
-                        file: file.clone(),
-                        syn_file: syn_file.clone(),
-                        imports: imports.clone(),
-                    }),
+                    "emit" => {
+                        let ty = if args.get(1).unwrap().to_string() == "()" {
+                            TypeRepr::Void
+                        } else {
+                            vars[args.get(1).unwrap()].clone()
+                        };
+                        Some(EventDefinition {
+                            name: args.first().unwrap().replace('"', ""),
+                            ty,
+                            file: file.clone(),
+                            syn_file: syn_file.clone(),
+                            imports: imports.clone(),
+                        })
+                    }
+                    "emit_to" => {
+                        let ty = if args.get(2).unwrap().to_string() == "()" {
+                            TypeRepr::Void
+                        } else {
+                            vars[args.get(1).unwrap()].clone()
+                        };
+                        Some(EventDefinition {
+                            name: args.get(1).unwrap().replace('"', ""),
+                            ty,
+                            file: file.clone(),
+                            syn_file: syn_file.clone(),
+                            imports: imports.clone(),
+                        })
+                    }
                     "emit_str" => Some(EventDefinition {
                         name: args.first().unwrap().replace('"', ""),
                         ty: TypeRepr::Simple("".to_string(), "String".to_string()),

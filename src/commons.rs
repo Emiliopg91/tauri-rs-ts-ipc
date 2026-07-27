@@ -49,6 +49,7 @@ pub enum TypeRepr {
         wrapper: GenericWrapper,
         types: Vec<Option<TypeRepr>>,
     },
+    Void,
 }
 
 impl TypeRepr {
@@ -166,6 +167,7 @@ impl TypeRepr {
                     GenericWrapper::Result => first,
                 }
             }
+            TypeRepr::Void => "void".to_string(),
         }
     }
 
@@ -179,6 +181,7 @@ impl TypeRepr {
                     .collect::<Vec<TypeRepr>>();
                 types.iter().flat_map(|t| t.inner_leaf_types()).collect()
             }
+            TypeRepr::Void => vec![],
         }
     }
 }
