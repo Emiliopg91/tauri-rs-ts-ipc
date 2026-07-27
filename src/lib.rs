@@ -236,38 +236,59 @@ fn inspect_code(
         }
 
         for struct_d in &finder.structs {
-            struct_d
-                .get_inner_leafs()
-                .iter()
-                .filter(|s| s.starts_with("crate::"))
-                .for_each(|s| {
-                    inner_used_types.insert(s.clone());
-                });
             structs.insert(struct_d.clone());
+        }
+    }
+
+    // Cierre transitivo: partiendo de los tipos usados por commands/events,
+    // vamos añadiendo los tipos que ESOS tipos usan a su vez, hasta que no
+    // se añada nada nuevo (fixed point).
+    loop {
+        let mut newly_added = Vec::new();
+
+        for type_name in inner_used_types.iter() {
+            if let Some(struct_d) = structs
+                .iter()
+                .find(|s| s.get_full_qualified_name() == *type_name)
+            {
+                for leaf in struct_d
+                    .get_inner_leafs()
+                    .iter()
+                    .filter(|s| s.starts_with("crate::"))
+                {
+                    if !inner_used_types.contains(leaf) {
+                        newly_added.push(leaf.clone());
+                    }
+                }
+            }
+        }
+
+        if newly_added.is_empty() {
+            break;
+        }
+
+        for t in newly_added {
+            inner_used_types.insert(t);
         }
     }
 
     inner_used_types
         .iter()
         .filter_map(|f| {
-            for struct_d in &structs {
-                if struct_d.get_full_qualified_name() == *f {
-                    return Some(struct_d.clone());
-                }
-            }
-            None
+            structs
+                .iter()
+                .find(|s| s.get_full_qualified_name() == *f)
+                .cloned()
         })
         .for_each(|e| used_structs.push(e));
 
     inner_used_types
         .iter()
         .filter_map(|f| {
-            for enum_d in &enums {
-                if enum_d.get_full_qualified_name() == *f {
-                    return Some(enum_d.clone());
-                }
-            }
-            None
+            enums
+                .iter()
+                .find(|e| e.get_full_qualified_name() == *f)
+                .cloned()
         })
         .for_each(|e| used_enums.push(e));
 
