@@ -136,11 +136,14 @@ import { listen } from \"@tauri-apps/api/event\";\n\n",
   ): () => void {
     console.debug(\"Listening to event '\" + event_name + \"'\");
     const unlisten = listen<R>(event_name, (event) => {
-      console.debug(
-        \"Received event for '\" + event_name + \"', payload: \",
-        event.payload,
-      );
-      callback(event.payload);
+        console.debug(
+            \"Received event for '\" + event_name + \"', payload: \",
+            event.payload,
+        );
+        callback(event.payload);
+    }).catch((err) => {
+        console.error(\"Failed to listen to '\" + event_name + \"':\", err);
+        return () => {};
     });
 
     return () => {
