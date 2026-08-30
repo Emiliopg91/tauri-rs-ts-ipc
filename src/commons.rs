@@ -148,9 +148,16 @@ impl TypeRepr {
                     .iter()
                     .filter_map(|x| x.clone())
                     .collect::<Vec<TypeRepr>>();
-                let first = types[0].to_typescript();
+                let mut first = types[0].to_typescript();
                 match wrapper {
-                    GenericWrapper::Vec => format!("{first}[]"),
+                    GenericWrapper::Vec => {
+                        first = if first.contains("|") {
+                            format!("({})", first)
+                        } else {
+                            first
+                        };
+                        format!("{first}[]")
+                    }
                     GenericWrapper::Set => format!("Set<{first}>"),
                     GenericWrapper::Option => format!("{first} | null"),
                     GenericWrapper::Map => {
