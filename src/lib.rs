@@ -190,6 +190,23 @@ fn generate_files(
             .replace(&project_dir.display().to_string(), "")[1..]
     );
     events.sort_by_key(|e| e.name.clone());
+    // An event emitted from several places must yield a single listener, with a single payload type
+    events.dedup_by(|dup, kept| {
+        if dup.name != kept.name {
+            return false;
+        }
+        if dup.ty.to_typescript() != kept.ty.to_typescript() {
+            panic!(
+                "Event '{}' is emitted with different payloads: '{}' in {} and '{}' in {}",
+                kept.name,
+                kept.ty.to_typescript(),
+                kept.file.display(),
+                dup.ty.to_typescript(),
+                dup.file.display()
+            );
+        }
+        true
+    });
     EventDefinition::generate_file(listener_path, events);
 }
 
