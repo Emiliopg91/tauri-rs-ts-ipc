@@ -107,7 +107,13 @@ impl EventDefinition {
         }
         let mut struct_names = struct_names.iter().cloned().collect::<Vec<_>>();
         struct_names.sort();
-        let struct_names = struct_names.join(", ");
+        let struct_names = struct_names
+            .iter()
+            .filter(|t| *t != "string" && *t != "number")
+            .to_owned()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
 
         let mut content = String::new();
         content.push_str(
