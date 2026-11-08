@@ -109,7 +109,7 @@ impl EventDefinition {
         struct_names.sort();
         let struct_names = struct_names
             .iter()
-            .filter(|t| *t != "string" && *t != "number")
+            .filter(|t| *t != "string" && *t != "number" && *t != "boolean")
             .to_owned()
             .cloned()
             .collect::<Vec<_>>()
